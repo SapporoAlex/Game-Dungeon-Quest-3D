@@ -134,6 +134,19 @@ window.addEventListener("keydown", (e) => {
   const nx = cur2 < 0 ? (dir > 0 ? 0 : btns.length - 1) : (cur2 + dir + btns.length) % btns.length;
   btns[nx].focus(); btns[nx].scrollIntoView({ block: "nearest" });
 });
+// when a quest card extends to show its mission, scroll the list just enough that the whole card stays visible
+let revealT = 0;
+function revealCard(e) {
+  const card = e.target.closest?.(".lvl"); if (!card || card.disabled) return;
+  clearTimeout(revealT);
+  revealT = setTimeout(() => {
+    const list = document.getElementById("levelList"); if (!list || !card.isConnected) return;
+    const a = card.getBoundingClientRect(), b = list.getBoundingClientRect();
+    if (a.bottom > b.bottom - 34) list.scrollBy({ top: a.bottom - b.bottom + 40, behavior: "smooth" });
+    else if (a.top < b.top) list.scrollBy({ top: a.top - b.top - 6, behavior: "smooth" });
+  }, 360);
+}
+screen.addEventListener("mouseover", revealCard); screen.addEventListener("focusin", revealCard);
 function navMenu() {
   const btns = menuButtons();
   if (!btns.length) return;
