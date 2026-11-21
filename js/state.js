@@ -1,7 +1,7 @@
 // Persistent player state (saved in localStorage) + derived stats.
 const KEY = "dungeonQuest3D_save_v1";
-const DEFAULTS = { gold: 0, amulet: 0, mana: 6, maxMana: 10, maxHp: 3, speedLvl: 0, attackLvl: 0, luckLvl: 0, levelIdx: 0 };
-export const S = { ...DEFAULTS, hp: 3 };
+const DEFAULTS = { gold: 0, amulet: 0, mana: 6, maxMana: 10, maxHp: 4, speedLvl: 0, attackLvl: 0, luckLvl: 0, levelIdx: 0 };
+export const S = { ...DEFAULTS, hp: 4 };
 
 export function save() { try { localStorage.setItem(KEY, JSON.stringify({ ...S })); } catch (e) {} }
 export function hasSave() { try { return !!localStorage.getItem(KEY); } catch (e) { return false; } }
