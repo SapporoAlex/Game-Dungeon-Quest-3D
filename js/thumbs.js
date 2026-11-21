@@ -32,6 +32,12 @@ function subject(sc, L) {
   if (kind === "dragon") {
     const m = inst("dragon"); m.scale.setScalar(0.62); m.position.set(0.3, 0, -0.6); m.rotation.y = -0.45; sc.add(m);
     glow(sc, 0xff5a10, -1.2, 0.6, 0.5, 4.5, 0.35); cam.pos = [0.2, 2.1, 7.8]; cam.look = [0, 1.5, 0];
+  } else if (kind === "finale") {
+    const m = inst("dragon"); m.scale.setScalar(0.5); m.position.set(-0.6, 0, -1.2); m.rotation.y = -0.5; sc.add(m);
+    const m2 = inst("dragon"); m2.scale.setScalar(0.5); m2.position.set(2.8, 0, -1.4); m2.rotation.y = 0.6; sc.add(m2);
+    const w = makeWizard(); w.scale.setScalar(1.0); w.position.set(1.1, 0, 0.6); sc.add(w);
+    const aR = w.getObjectByName("arm_R"); if (aR) aR.rotation.x = -1.8;
+    glow(sc, 0xb070ff, 1.6, 2.5, 1.0, 3, 0.5); glow(sc, 0xff4a10, 0, 0.6, 0, 6, 0.3); cam.pos = [0.8, 2.0, 8]; cam.look = [0.8, 1.3, 0];
   } else if (kind === "wizard") {
     const m = makeWizard(); m.scale.setScalar(1.15); m.position.set(0, 0, 0); m.rotation.y = -0.2; sc.add(m);
     const aR = m.getObjectByName("arm_R"); if (aR) aR.rotation.x = -1.8;
@@ -68,7 +74,7 @@ export function thumbFor(L) {
     const theme = L.theme || { wall: 0xb0a89c, floor: 0xa8a8a8, fog: 0x0a0806, amb: 0x806a58 };
     const sc = new THREE.Scene(); backdrop(sc, theme);
     const cam = subject(sc, L), c = new THREE.PerspectiveCamera(46, W / H, 0.1, 80);
-    const zoom = { dragon: 0.5, wizard: 0.8, princess: 0.8, tome: 0.7 }[L.kind] || 0.62;                                  // dolly in: the banner is a wide, shallow strip
+    const zoom = { finale: 0.55, dragon: 0.5, wizard: 0.8, princess: 0.8, tome: 0.7 }[L.kind] || 0.62;                                  // dolly in: the banner is a wide, shallow strip
     for (let k = 0; k < 3; k++) cam.pos[k] = cam.look[k] + (cam.pos[k] - cam.look[k]) * zoom;
     const shift = 2.9 * zoom + 0.6;                                    // frame the subject on the right so the title text sits on the dark left
     c.position.set(cam.pos[0] - shift, cam.pos[1], cam.pos[2]); c.lookAt(cam.look[0] - shift, cam.look[1], cam.look[2]);

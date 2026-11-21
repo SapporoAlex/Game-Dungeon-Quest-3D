@@ -18,18 +18,18 @@ function show(html, wire) {
 }
 function hide() { screen.style.display = "none"; screen.innerHTML = ""; }
 const HELP = IS_TOUCH
-  ? `<div class="help"><b>Left thumb</b><span>Move</span><b>Right side drag</b><span>Look</span><b>⚔ / ⚡</b><span>Sword / lightning bolt</span><b>E / 🧪</b><span>Use (doors, crates, shop) / drink potion</span></div>`
+  ? `<div class="help"><b>Left thumb</b><span>Move</span><b>Right side drag</b><span>Look</span><b>⚔ / ⚡</b><span>Sword / lightning bolt</span><b>E</b><span>Use (doors, crates, shop)</span></div>`
   : `<div class="help"><b>W A S D</b><span>Move</span><b>Mouse</b><span>Look (click to capture)</span><b>Left click / Space</b><span>Short sword</span>
-<b>Right click / F</b><span>Lightning bolt (uses magic)</span><b>E</b><span>Open doors · search crates, tables, chests · buy</span><b>Q</b><span>Drink health potion</span>
+<b>Right click / F</b><span>Lightning bolt (uses magic)</span><b>E</b><span>Open doors · search crates, tables, chests · buy</span>
 <b>Shift</b><span>Sprint</span></div>
-<div class="help"><b>🎮 Controller</b><span>Left stick move · Right stick look · RT / X sword · LT / B lightning · A use · Y potion · Start pause · D-pad / A in menus</span></div>`;
+<div class="help"><b>🎮 Controller</b><span>Left stick move · Right stick look · RT / X sword · LT / B lightning · A use · Start pause · D-pad / A in menus</span></div>`;
 const fsBtn = document.fullscreenEnabled ? `<button class="btn small" data-act="fs">⛶ Fullscreen</button>` : "";
 const disposeCur = () => { if (cur) { cur.dispose && cur.dispose(); cur = null; } };
 
 // ---------------------------------------------------------------- title
 const KIND = {
   tutorial: ["🎓", "Tutorial"], escape: ["🚪", "Escape"], dragon: ["🐉", "Slay the Dragon"], clear: ["☠", "Clear the Dungeon"],
-  wizard: ["⚡", "Defeat the Dark Wizard"], tome: ["📖", "Find the Tome of Horass"], princess: ["👑", "Rescue the Princess"],
+  wizard: ["⚡", "Defeat the Dark Wizard"], finale: ["👑", "The Final Battle"], tome: ["📖", "Find the Tome of Horass"], princess: ["👑", "Rescue the Princess"],
 };
 /** one entry of the vertical quest list: a screenshot banner with the title; hover / focus extends it downwards to show the mission */
 function levelCard(i, state) {
@@ -70,7 +70,7 @@ function camp(note) {
   const next = S.levelIdx, allDone = next >= LEVELS.length;
   const cards = LEVELS.map((l, i) => levelCard(i, i < next ? "done" : i === next ? "next" : "locked")).join("");
   show(`<h2>Camp</h2>${note ? `<p class="note">${note}</p>` : ""}
-    <p class="stats">🪙 <b>${S.gold}</b> gold &nbsp; 🧪 <b>${S.potions}</b> potions &nbsp; ♥ <b>${S.maxHp}</b> health &nbsp; ⚡ <b>${S.mana}/${S.maxMana}</b> magic &nbsp; ⚔ <b>${1 + S.attackLvl}</b> power</p>
+    <p class="stats">🪙 <b>${S.gold}</b> gold &nbsp; 📿 <b>${S.amulet ? "Rebirth amulet ready" : "no amulet"}</b> &nbsp; ♥ <b>${S.maxHp}</b> health &nbsp; ⚡ <b>${S.mana}/${S.maxMana}</b> magic &nbsp; ⚔ <b>${1 + S.attackLvl}</b> power</p>
     ${allDone ? "<p>🏆 You have conquered every quest in the dungeon!</p>" : ""}
     <div class="menu row"><button class="btn" data-act="shop">Lirael's Shop</button><button class="btn" data-act="title">Main Menu</button></div>
     <div class="rule"><i></i><span>Choose a quest</span><i></i></div>

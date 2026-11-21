@@ -16,11 +16,11 @@ const THEMES = {
   quest4: { wall: 0x7aa8a0, floor: 0x7a9890, fog: 0x030a09, amb: 0x406860 },
 };
 const DEF = {
-  goblin: { model: "goblin", name: "Goblin", hp: 1, speed: 3.5, dmg: 1, reach: 1.55, cd: 0.9, wind: 0.28, r: 0.4, scale: 1.1, coins: [1, 2] },
+  goblin: { model: "goblin", name: "Goblin", hp: 1, speed: 4.7, dmg: 1, reach: 1.55, cd: 0.6, wind: 0.2, r: 0.4, scale: 1.1, coins: [1, 2] },
   archer: { model: "goblin", name: "Goblin Archer", hp: 1, speed: 3.1, dmg: 1, reach: 0, cd: 2.1, wind: 0.6, r: 0.4, scale: 1.1, coins: [1, 3], ranged: { min: 4.5, max: 16, arrow: 12.5 } },
-  skeleton: { model: "skeleton", name: "Skeleton", hp: 3, speed: 2.8, dmg: 1, reach: 1.95, cd: 1.0, wind: 0.35, r: 0.38, scale: 1.0, coins: [1, 3] },
-  chaos: { model: "chaos", name: "Chaos Warrior", hp: 8, speed: 2.3, dmg: 2, reach: 2.3, cd: 1.5, wind: 0.5, r: 0.6, scale: 1.0, coins: [2, 4] },
-  dragon: { model: "dragon", name: "Red Dragon", hp: 30, speed: 2.1, dmg: 3, reach: 3.3, cd: 1.7, wind: 0.6, r: 1.15, scale: 0.95, coins: [8, 12], boss: true },
+  skeleton: { model: "skeleton", name: "Skeleton", hp: 3, speed: 3.8, dmg: 1, reach: 1.95, cd: 0.7, wind: 0.24, r: 0.38, scale: 1.0, coins: [1, 3] },
+  chaos: { model: "chaos", name: "Chaos Warrior", hp: 8, speed: 3.2, dmg: 2, reach: 2.3, cd: 1.0, wind: 0.34, r: 0.6, scale: 1.0, coins: [2, 4] },
+  dragon: { model: "dragon", name: "Red Dragon", hp: 30, speed: 2.8, dmg: 3, reach: 3.3, cd: 1.2, wind: 0.45, r: 1.15, scale: 0.95, coins: [8, 12], boss: true },
   wizard: { model: "wizard", name: "Dark Wizard", hp: 14, speed: 2.7, dmg: 2, reach: 0, cd: 3.1, wind: 0.95, r: 0.45, scale: 1.1, coins: [12, 18], boss: true, ranged: { min: 6, max: 19 } },
 };
 const DIRS = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };
@@ -42,8 +42,8 @@ export class Play {
     this.t = 0; this.state = "play"; this.kills = 0; this.noise = 0;
     this.doors = []; this.props = []; this.enemies = []; this.items = []; this.shots = []; this.fx = []; this.plates = [];
     this.torches = []; this.stairs = []; this.hintsDone = new Set();
-    this.hasTome = false; this.tome = null; this.princess = null; this.lockState = null; this.bubbleT = 0;
-    this.startGold = S.gold; this.startPotions = S.potions; this.startMana = S.mana;
+    this.hasTome = false; this.tome = null; this.princess = null; this.lockState = null; this.bubbleT = 0; this.ambushT = 0; this.ambushMsg = ""; this.ambushed = false;
+    this.startGold = S.gold; this.startAmulet = S.amulet; this.startMana = S.mana;
     S.hp = S.maxHp;
 
     // lights
@@ -78,19 +78,24 @@ export class Play {
     if (g === "dragon") return this.dragonDead() ? "The dragon is dead — return to the stairwell!" : "Slay the Red Dragon, then take the stairwell.";
     if (g === "wizard") return this.wizardDead() ? "The Dark Wizard is dead — return to the stairwell!" : "Defeat the Dark Wizard (watch out for lightning!), then take the stairwell.";
     if (g === "tome") return this.hasTome ? "You have the Tome of Horass — return to the stairwell where you began!" : "Search the labyrinth for the Tome of Horass.";
+    if (g === "finale") {
+      if (!this.bossesDead()) return `Final battle: slay the 2 dragons and the Dark Wizard (${this.enemies.filter((e) => (e.type === "dragon" || e.type === "wizard") && !e.dead).length} left).`;
+      return this.princess && this.princess.found ? "Fight your way back to the stairwell!" : "Free the Elven Princess!";
+    }
     if (g === "princess") return this.princess && this.princess.found ? "The Elven Princess is following you — reach the stairwell!" : "Find the Elven Princess, hidden in a room far from here.";
     return alive ? `Defeat every enemy (${alive} left).` : "All foes defeated — take a stairwell!";
   }
   dragonDead() { return !this.enemies.some((e) => e.type === "dragon" && !e.dead); }
+  bossesDead() { return !this.enemies.some((e) => (e.type === "dragon" || e.type === "wizard") && !e.dead); }
   wizardDead() { return !this.enemies.some((e) => e.type === "wizard" && !e.dead); }
   stairsOpen() {
     const g = this.L.goal;
     return g === "stairs" || (g === "dragon" && this.dragonDead()) || (g === "wizard" && this.wizardDead()) || (g === "tome" && this.hasTome)
-      || (g === "princess" && !!this.princess && this.princess.found) || (g === "clear" && !this.enemies.some((e) => !e.dead));
+      || (g === "princess" && !!this.princess && this.princess.found) || (g === "finale" && this.bossesDead() && !!this.princess && this.princess.found) || (g === "clear" && !this.enemies.some((e) => !e.dead));
   }
   sealedText() {
     return { dragon: "The stairwell is sealed — slay the Red Dragon first!", wizard: "The stairwell is sealed — defeat the Dark Wizard first!", tome: "The stairwell is sealed — find the Tome of Horass first!",
-      princess: "The stairwell is sealed — find the Elven Princess first!" }[this.L.goal] || "The stairwell is sealed — defeat every enemy first!";
+      princess: "The stairwell is sealed — find the Elven Princess first!", finale: "The stairwell is sealed — win the final battle and free the princess first!" }[this.L.goal] || "The stairwell is sealed — defeat every enemy first!";
   }
   say(who, text, sec = 6) { hud.bubble(`<b>${who}:</b> ${text}`); sayLine(text); this.bubbleT = sec; }
 
@@ -194,7 +199,7 @@ export class Play {
       const glow = glowSprite(0xa070ff, 2.8, 0.7); glow.position.set(cx(c), 1.1, cx(r)); this.scene.add(glow);
       this.tome = { x: cx(c), z: cx(r), mesh: m, glow, c, r };
     }
-    if (L.goal === "princess" && L.princessSpots && L.princessSpots.length) {
+    if ((L.goal === "princess" || L.goal === "finale") && L.princessSpots && L.princessSpots.length) {
       const [c, r] = L.princessSpots[Math.floor(Math.random() * L.princessSpots.length)];   // a random far-away room each time
       const m = makePrincess(); m.scale.setScalar(1.05); m.position.set(cx(c), 0, cx(r)); this.scene.add(m);
       this.princess = { x: cx(c), z: cx(r), c, r, yaw: rand(0, 6.28), mesh: m, p: parts(m, ["body", "head", "arm_L", "arm_R"]), found: false, walk: 0, sayT: 25, tele: 0 };
@@ -426,9 +431,9 @@ export class Play {
       const d = Math.hypot(it.x - this.p.x, it.z - this.p.z);
       if (it.age > 0.45 && d < reach) {
         if (it.kind === "mana" && S.mana >= S.maxMana) { if (!it.warned) { it.warned = true; hud.msg("Magic is already full.", 1.5); } continue; }
-        if (it.kind === "health" && S.potions >= 20) continue;
+        if (it.kind === "health" && S.hp >= S.maxHp) { if (!it.warned) { it.warned = true; hud.msg("Health is full — the heart potion waits for you.", 1.8); } continue; }
         if (it.kind === "coin") { S.gold++; sfx.coin(); }
-        else if (it.kind === "health") { S.potions++; sfx.pickup(); hud.msg("Picked up a health potion (Q to drink)", 2.5); }
+        else if (it.kind === "health") { S.hp = Math.min(S.maxHp, S.hp + 1); sfx.pickup(); hud.msg("Health potion: +1 heart!", 2); hud.flash("255,80,100", 0.2); }
         else { S.mana = Math.min(S.maxMana, S.mana + 3); sfx.mana(); hud.msg("Green bottle: +3 magic!", 2.5); hud.flash("60,255,120", 0.25); }
         this.burst(it.x, it.y, it.z, it.kind === "coin" ? 0xffd040 : it.kind === "health" ? 0xff5060 : 0x50ff80, 6, 2.2, 0.4, 0.05);
         this.scene.remove(it.mesh, it.glow); this.items.splice(i, 1);
@@ -457,6 +462,11 @@ export class Play {
     if (this.p.inv > 0 || this.state !== "play") return;
     S.hp = Math.max(0, S.hp - dmg); this.p.inv = 0.8; this.camShake = 0.35;
     sfx.hurt(); rumble(220, 0.8, 0.5); hud.flash("255,0,0", 0.6);
+    if (S.hp <= 0 && S.amulet > 0) {                              // Amulet of Rebirth: back to full health, amulet is lost
+      S.amulet = 0; S.hp = S.maxHp; this.p.inv = 2.5; save(); sfx.stairs(); rumble(400, 0.5, 0.9); hud.flash("255,225,120", 0.9);
+      this.burst(this.p.x, 1.2, this.p.z, 0xffe070, 24, 4, 1, 0.08); hud.msg("The Amulet of Rebirth shatters — you rise again with full health!", 5);
+      return;
+    }
     if (S.hp <= 0) { this.state = "dead"; this.endT = 0; this.onEnd("dead"); }
   }
   damageEnemy(e, dmg, kx, kz, mag = 1.6) {
@@ -475,7 +485,8 @@ export class Play {
     if (Math.random() < 0.22) loot.push(["health", 1]);
     if (e.type === "dragon") { loot.push(["health", 2], ["mana", 2]); hud.boss(null); hud.msg("The Red Dragon has fallen!", 5); }
     if (e.type === "wizard") {
-      loot.push(["health", 2], ["mana", 3]); hud.boss(null); hud.msg("The Dark Wizard has fallen!", 5); this.say("Dark Wizard", WIZARD.dying[0], 4);
+      loot.push(["health", 2], ["mana", 3]); hud.boss(null); hud.msg("The Dark Wizard has fallen!", 5);
+      if (this.L.goal === "wizard") this.queueAmbush("The wizard's spell breaks — his minions surge from the shadows! Fight your way back to the stairwell!"); this.say("Dark Wizard", WIZARD.dying[0], 4);
       const ud = e.mesh.userData; if (ud.orbLight) ud.orbLight.intensity = 0; if (ud.eyeMat) ud.eyeMat.color.setHex(0x203a24); if (ud.orb) ud.orb.visible = false;
     }
     this.dropLoot(e.x, e.z, loot);
@@ -537,12 +548,6 @@ export class Play {
       if (chain) { this.bolt(end, new THREE.Vector3(chain.x, 1.2, chain.z)); this.damageEnemy(chain, Math.ceil(boltDmg() / 2), 0, 0, 0.5); }
     } else if (best) this.openProp(best.o);
   }
-  drinkPotion() {
-    if (S.potions <= 0) { sfx.deny(); hud.msg("No health potions!", 1.5); return; }
-    if (S.hp >= S.maxHp) { hud.msg("Already at full health.", 1.5); return; }
-    S.potions--; S.hp = S.maxHp; sfx.drink(); hud.flash("255,80,100", 0.3); hud.msg("Health restored!", 1.5);
-  }
-
   // ------------------------------------------------------------------ enemies
   updateEnemy(e, dt) {
     const p = this.p, d = e.d, m = e.mesh, P = e.p;
@@ -757,7 +762,7 @@ export class Play {
     if (this.state === "dead") { this.endT += dt; camera.rotation.z = Math.min(0.8, this.endT * 1.2); camera.position.y = Math.max(0.3, 1.55 - this.endT * 1.2); this.updateFx(dt); this.updateEnemiesOnly(dt); return; }
 
     // look
-    p.yaw -= mouse.dx * 0.0024; p.pitch = Math.max(-0.9, Math.min(0.9, p.pitch - mouse.dy * 0.0024));
+    p.yaw -= mouse.dx * 0.0024; p.pitch = Math.max(-0.9, Math.min(0.9, p.pitch + mouse.dy * 0.0024));
     const turn = (keys.ArrowLeft ? 1 : 0) - (keys.ArrowRight ? 1 : 0); p.yaw += turn * 2.4 * dt;
     if (keys.ArrowUp) p.pitch = Math.min(0.9, p.pitch + dt); if (keys.ArrowDown) p.pitch = Math.max(-0.9, p.pitch - dt);
     // move
@@ -770,7 +775,6 @@ export class Play {
     if ((mouse.leftPressed && canClick || pressed("Space")) && p.cd <= 0) this.swordAttack();
     if ((mouse.rightPressed && canClick || pressed("KeyF")) && p.boltCd <= 0) this.castBolt();
     if (pressed("KeyE")) this.interact();
-    if (pressed("KeyQ")) this.drinkPotion();
 
     // world
     this.flowT -= dt; const pc = Math.floor(p.z / T) * this.cols + Math.floor(p.x / T);
@@ -781,6 +785,7 @@ export class Play {
       else d.mesh.position.y = d.open * 3.05;
     }
     this.updateLockRoom(); this.updateTome(dt); this.updatePrincess(dt);
+    if (this.ambushT > 0 && (this.ambushT -= dt) <= 0) this.ambush(this.ambushMsg);
     if (this.bubbleT > 0) { this.bubbleT -= dt; if (this.bubbleT <= 0) hud.bubble(null); }
     for (const pr of this.props) { if (pr.lid) { const tgt = pr.opened ? -1.9 : 0; pr.lidA += (tgt - pr.lidA) * Math.min(1, dt * 8); pr.lid.rotation.x = pr.lidA; } if (pr.glint) pr.glint.material.opacity = 0.5 + Math.sin(this.t * 4 + pr.x) * 0.3; }
     for (const e of this.enemies) this.updateEnemy(e, dt);
@@ -811,6 +816,28 @@ export class Play {
     hud.prompt(tgt ? (tgt.kind === "door" ? (tgt.o.secret && !tgt.o.found ? "" : tgt.o.locked ? "The door is sealed" : `E — ${tgt.o.target ? "Close" : "Open"} door`) : `E — Search ${tgt.o.kind}`) : "");
     hud.update(); hud.tick(dt); this.drawMinimap();
   }
+  canFreePrincess() { return this.L.goal !== "finale" || this.bossesDead(); }
+  queueAmbush(msg) { if (this.ambushed || this.ambushT > 0) return; this.ambushT = 2.2; this.ambushMsg = msg; }
+  // the objective is done but the way out is guarded: a fresh wave of enemies appears out of sight and hunts the player
+  ambush(msg) {
+    this.ambushed = true; const p = this.p, tier = this.L.tier ?? 0.5, n = 6 + Math.round(tier * 9), lr = this.L.lockRoom;
+    this.computeFlow();
+    const cells = [];
+    for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) {
+      const d = this.flow[r * this.cols + c];
+      if (d < 7 || d > 36 || this.ch(c, r) === "E" || this.doorAt(c, r)) continue;
+      if (lr && c >= lr.rect[0] && c <= lr.rect[2] && r >= lr.rect[1] && r <= lr.rect[3]) continue;
+      const x = cx(c), z = cx(r); if (this.blocked(x, z, 0.5) || this.los(x, z, p.x, p.z)) continue;
+      cells.push([x, z]);
+    }
+    for (let i = cells.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [cells[i], cells[j]] = [cells[j], cells[i]]; }
+    const w = [["goblin", 1], ["archer", 0.7], ["skeleton", 0.5 + tier], ["chaos", 0.2 + tier * 0.8]], tot = w.reduce((a, b) => a + b[1], 0);
+    for (const [x, z] of cells.slice(0, n)) {
+      let k = Math.random() * tot, type = "goblin"; for (const [t, v] of w) { if ((k -= v) <= 0) { type = t; break; } }
+      const e = this.addEnemy(type, x, z); e.state = "chase"; e.ambush = true; this.burst(x, 1, z, 0xb070ff, 8, 2.5, 0.7, 0.07);
+    }
+    sfx.roar(); this.camShake = 0.3; hud.msg(msg, 6); this.noise = 1;
+  }
   updateLockRoom() {
     const lr = this.L.lockRoom; if (!lr) return;
     const door = this.doorAt(lr.door[0], lr.door[1]); if (!door) return;
@@ -829,6 +856,7 @@ export class Play {
     if (Math.hypot(tm.x - this.p.x, tm.z - this.p.z) < 1.5) {
       this.hasTome = true; this.scene.remove(tm.mesh, tm.glow); sfx.found(); hud.flash("170,120,255", 0.4);
       this.say("You", TOME.found[0], 6); hud.msg("You found the Tome of Horass! Return to the stairwell.", 5); hud.objective(this.objectiveText());
+      this.queueAmbush("The tome's magic has alarmed the dungeon — reinforcements are closing in! Get back to the stairwell!");
     }
   }
   updatePrincess(dt) {
@@ -837,9 +865,11 @@ export class Play {
     let moved = 0;
     if (!pr.found) {
       if (dist < 10) aim(dx / dist, dz / dist, 3);
-      if (dist < 3.6 && this.los(pr.x, pr.z, p.x, p.z)) {
+      if (dist < 4.5 && !this.canFreePrincess() && this.los(pr.x, pr.z, p.x, p.z) && this.t - (pr.warned || -99) > 8) { pr.warned = this.t; hud.msg("Dark magic shackles her — defeat her captors first!", 3); }
+      if (dist < 3.6 && this.canFreePrincess() && this.los(pr.x, pr.z, p.x, p.z)) {
         pr.found = true; sfx.found(); hud.flash("255,230,140", 0.35);
         this.say("Elven Princess", PRINCESS.found[0], 7); hud.msg("You found the Elven Princess! She will follow you — now reach the stairwell!", 6); hud.objective(this.objectiveText());
+        this.queueAmbush("The alarm is raised — enemies pour into the dungeon! Get the princess to the stairwell!");
       }
     } else {
       if (dist > 2.3) {
@@ -909,7 +939,7 @@ export class Play {
     g.lineTo(px - Math.cos(this.p.yaw) * 3 + Math.sin(this.p.yaw) * 3, pz + Math.sin(this.p.yaw) * 3 + Math.cos(this.p.yaw) * 3); g.fill();
   }
 
-  restoreSnapshot() { S.gold = this.startGold; S.potions = this.startPotions; S.mana = Math.max(this.startMana, Math.min(S.maxMana, 4)); }
+  restoreSnapshot() { S.gold = this.startGold; S.amulet = this.startAmulet; S.mana = Math.max(this.startMana, Math.min(S.maxMana, 4)); }
   dispose() {
     camera.remove(this.vm); camera.remove(this.camLight); camera.rotation.z = 0;
     this.scene.traverse((o) => { o.geometry?.dispose?.(); });

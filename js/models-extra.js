@@ -193,3 +193,16 @@ export function makeRug(wW, hD, name) {
   plane.rotation.x = -Math.PI / 2;
   const holder = new THREE.Group(); holder.add(plane); holder.rotation.y = wide ? Math.PI / 2 : 0; return holder;
 }
+
+// ------------------------------------------------------------------ Amulet of Rebirth (shop shelf model)
+export function makeAmulet() {
+  const g = new THREE.Group(), gold = lam(0xe0b030);
+  const chain = mesh(new THREE.TorusGeometry(0.2, 0.012, 6, 24), gold, [0, 0.18, 0], [0.2, 0, 0], [1, 1.25, 1]); g.add(chain);
+  g.add(mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 20), gold, [0, -0.1, 0], [Math.PI / 2, 0, 0]));
+  g.add(mesh(new THREE.TorusGeometry(0.1, 0.014, 6, 20), gold, [0, -0.1, 0.0], [0, 0, 0]));
+  const gem = mesh(new THREE.OctahedronGeometry(0.065, 0), glowMat(0xff5a86), [0, -0.1, 0.03], [0, 0.4, 0], [1, 1.3, 0.7]); g.add(gem);
+  for (const s of [-1, 1]) g.add(mesh(new THREE.ConeGeometry(0.035, 0.16, 4), gold, [s * 0.14, -0.04, 0], [0, 0, s * -1.0]));   // little wings
+  g.children.forEach((ch) => { ch.position.y += 0.1; });   // keep the pendant clear of the shelf-front price tag
+  g.scale.setScalar(0.6);
+  return g;
+}

@@ -1,6 +1,7 @@
 // The between-levels 3D shop: elf shopkeeper, hovering items on shelves.
 import { THREE, camera, TEX, inst, parts, glowSprite, labelSprite, keys, mouse, pressed, lock, sfx, moveInput, sayLine, stopLine, setShopMusic } from "./engine.js";
 import { LIRAEL } from "./dialogue.js";
+import { makeAmulet } from "./models-extra.js";
 import { S, save, SHOP_ITEMS, moveSpeed } from "./state.js";
 import { LEVELS } from "./levels.js";
 import { hud } from "./hud.js";
@@ -60,7 +61,7 @@ export class Shop {
       for (const [idx, off, row] of sh.slots) {
         const def = SHOP_ITEMS[idx];
         const boardTop = row ? 1.69 : 0.94;
-        const model = inst(def.model); model.scale.setScalar(1.7);
+        const model = def.model === "amulet" ? makeAmulet() : inst(def.model); model.scale.setScalar(1.7);
         const x = sh.x + off, z = sh.z + 0.05, y = boardTop + 0.32;
         s.add(model);
         const glow = glowSprite(0xffe8a0, 1.3, 0.5); s.add(glow);
@@ -101,7 +102,7 @@ export class Shop {
   }
   update(dt) {
     this.t += dt; const p = this.p;
-    p.yaw -= mouse.dx * 0.0024; p.pitch = Math.max(-0.9, Math.min(0.9, p.pitch - mouse.dy * 0.0024));
+    p.yaw -= mouse.dx * 0.0024; p.pitch = Math.max(-0.9, Math.min(0.9, p.pitch + mouse.dy * 0.0024));
     p.yaw += ((keys.ArrowLeft ? 1 : 0) - (keys.ArrowRight ? 1 : 0)) * 2.4 * dt;
     const [f, s] = moveInput();
     let mx = -Math.sin(p.yaw) * f + Math.cos(p.yaw) * s, mz = -Math.cos(p.yaw) * f - Math.sin(p.yaw) * s; const ml = Math.hypot(mx, mz);
@@ -135,7 +136,6 @@ export class Shop {
       if (a) this.buy(a);
       else if (doorD < 3.2) { sfx.door(); this.onExit(); return; }
     }
-    if (pressed("KeyQ") && S.potions > 0 && S.hp < S.maxHp) { S.potions--; S.hp = S.maxHp; sfx.drink(); }
     hud.update(); hud.tick(dt);
       }
   buy(it) {

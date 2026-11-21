@@ -24,6 +24,7 @@
   #manaFill{height:100%;width:100%;background:linear-gradient(90deg,#1fa84a,#5cff8a);transition:width .2s}
   #manaTxt{position:absolute;inset:0;text-align:center;font-size:13px;line-height:20px;font-weight:bold;text-shadow:0 1px 2px #000}
   #br{right:16px;bottom:16px;text-align:right;line-height:1.5}
+  #amulet{display:none;color:#ffb0d0;font-size:15px;font-family:var(--ui);text-shadow:0 0 10px rgba(255,80,140,.7)}
   #br b{color:#ffd24a;font-size:20px;font-family:var(--ui)} .keys{font-size:12px;opacity:.8}
   #tl{left:16px;top:16px;max-width:360px} #lvlTitle{font-family:var(--ui);font-weight:700;font-size:17px;color:#ffd24a;letter-spacing:.04em} #objective{font-size:14px;margin-top:2px}
   #minimap{position:absolute;right:16px;top:16px;border:2px solid #8a6a2c;border-radius:6px;background:rgba(0,0,0,.55);width:200px;height:160px}
@@ -99,7 +100,7 @@
   .tbtn{position:absolute;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(20,12,4,.55);border:3px solid rgba(216,178,90,.8);color:#fff1c8;font-weight:bold;user-select:none;-webkit-user-select:none}
   .tbtn.down{background:rgba(255,210,90,.55)}
   #tSword{right:26px;bottom:34px;width:86px;height:86px;font-size:38px} #tBolt{right:124px;bottom:28px;width:70px;height:70px;font-size:30px;border-color:#7ad0ff}
-  #tUse{right:34px;bottom:140px;width:60px;height:60px;font-size:24px} #tPotion{right:112px;bottom:112px;width:54px;height:54px;font-size:22px}
+  #tUse{right:34px;bottom:140px;width:60px;height:60px;font-size:24px}
   #tPause{right:16px;top:176px;width:44px;height:44px;font-size:16px}
   #rotate{display:none;position:fixed;inset:0;z-index:20;background:#000;align-items:center;justify-content:center;text-align:center;font-size:22px;padding:30px}
   @media (orientation:portrait){body.touch #rotate{display:flex}}
@@ -122,13 +123,13 @@
   <canvas id="minimap" width="200" height="160"></canvas>
   <div id="boss"><div id="bossName" style="font-weight:bold;margin-bottom:2px"></div><div id="bossBar"><div id="bossFill"></div></div></div>
   <div id="touchui"><div id="moveZone"></div><div id="lookZone"></div><div id="stick"><div id="knob"></div></div>
-    <div class="tbtn" id="tSword">⚔</div><div class="tbtn" id="tBolt">⚡</div><div class="tbtn" id="tUse">E</div><div class="tbtn" id="tPotion">🧪</div><div class="tbtn" id="tPause">❚❚</div></div>
+    <div class="tbtn" id="tSword">⚔</div><div class="tbtn" id="tBolt">⚡</div><div class="tbtn" id="tUse">E</div><div class="tbtn" id="tPause">❚❚</div></div>
   <div id="cross"></div><div id="prompt"></div><div id="msg"></div><div id="bubble"></div>
   <div id="bl" class="panel"><div id="hearts"></div>
     <div class="manawrap"><div id="manaFill"></div><div id="manaTxt"></div></div>
     <div class="keys" style="margin-top:4px">⚡ Magic (right-click / F)</div></div>
-  <div id="br" class="panel">🪙 Gold <b id="gold">0</b><br>🧪 Potions <b id="potions">0</b>
-    <div class="keys">Q drink · E use · click: sword · right-click: lightning</div></div>
+  <div id="br" class="panel">🪙 Gold <b id="gold">0</b><div id="amulet" title="Amulet of Rebirth: revives you once at full health">📿 Amulet of Rebirth</div>
+    <div class="keys">E use · click: sword · right-click: lightning</div></div>
   <div id="flash"></div>
 </div>
 <div id="screen"></div>

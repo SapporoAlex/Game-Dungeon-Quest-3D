@@ -4,17 +4,12 @@
 //  Each sound can list several files; one is picked at random each time.
 //  Sounds marked "synth" are generated in code (no file needed) – set a `file` list to override them.
 // ---------------------------------------------------------------------------
-export const MUSIC = {
-  src: "audio/music.mp3",     // looping background music (set to "" for none)
-  volume: 0.18,
-};
-
-// The shop plays its own background track. Drop your file at audio/shop.mp3 (or change the path here).
-// Until that file exists the shop simply keeps playing the main music.
-export const SHOP_MUSIC = {
-  src: "audio/shop.mp3",
-  volume: 0.22,
-};
+// Background music. With `src: ""` the game plays its built-in synthesised tracks (js/music.js): dark atmospheric dungeon
+// ambience for the dungeon / menus, and a happy flute-and-harp elven tune in the shop.
+// To use your own recordings instead, put the files in /audio and set the paths here (e.g. "audio/dungeon.mp3", "audio/shop.mp3").
+// (The previous track, audio/music.mp3, is still in the repo — set MUSIC.src to "audio/music.mp3" to bring it back.)
+export const MUSIC = { src: "", volume: 0.2 };
+export const SHOP_MUSIC = { src: "", volume: 0.2 };
 
 export const SFX = {
   // name:      { files: [...], volume }

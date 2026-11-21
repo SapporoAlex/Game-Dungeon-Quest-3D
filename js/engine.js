@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "../vendor/GLTFLoader.js";
 import { MUSIC, SHOP_MUSIC, SFX } from "./audio-config.js";
 import { dialogueFile } from "./dialogue.js";
+import { dungeonTrack, elvenTrack } from "./music.js";
 export { THREE };
 
 export const T = 3;          // world size of one map tile
@@ -102,7 +103,8 @@ export function labelSprite(lines, color = "#ffe9a8") {
   g.fillStyle = "rgba(10,6,2,0.65)"; g.beginPath(); g.roundRect(4, 4, 248, 88, 14); g.fill();
   g.strokeStyle = "#d8b25a"; g.lineWidth = 3; g.stroke();
   g.textAlign = "center"; g.fillStyle = color;
-  g.font = "bold 22px 'Cinzel','Trebuchet MS',serif"; g.fillText(lines[0], 128, 42);
+  let fs = 22; do { g.font = `bold ${fs}px 'Cinzel','Trebuchet MS',serif`; fs--; } while (g.measureText(lines[0]).width > 226 && fs > 11);
+  g.fillText(lines[0], 128, 42);
   g.font = "bold 22px 'Cinzel','Trebuchet MS',serif"; g.fillStyle = "#ffd24a"; g.fillText(lines[1] || "", 128, 76);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }));
@@ -200,22 +202,33 @@ const synth = {
 };
 export const sfx = {};
 for (const name of Object.keys(SFX)) sfx[name] = () => { if (!sample(name) && synth[name]) synth[name](); };
-let music, shopMusic, wantShop = false;
+// Background music. Each track is either an audio file (if `src` is set in audio-config.js) or the built-in synthesised
+// track from music.js. The shop gets its own track; leaving the shop switches back (with fades).
+function makeTrack(cfg, synth) {
+  let audio = null, inst = null, failed = false;
+  return {
+    play() {
+      if (cfg.src && !failed) {
+        if (!audio) { audio = new Audio(cfg.src); audio.loop = true; audio.volume = cfg.volume ?? 0.2; audio.addEventListener("error", () => { failed = true; if (want === this) syncMusic(); }); }
+        audio.play().catch(() => {}); return;
+      }
+      if (!inst) inst = synth(AC, (cfg.volume ?? 0.2) * 2.4).start();
+    },
+    stop() { if (audio) audio.pause(); if (inst) { inst.stop(); inst = null; } },
+  };
+}
+let dungeon, elven, started = false, wantShop = false, want = null;
 function syncMusic() {
-  // shop: its own track (falls back to the main music if audio/shop.mp3 is missing); everywhere else: main music
-  const shopOk = wantShop && shopMusic && !shopMusic.dataset.failed;
-  if (music) { if (shopOk) music.pause(); else music.play().catch(() => {}); }
-  if (shopMusic) { if (shopOk) shopMusic.play().catch(() => {}); else shopMusic.pause(); }
+  if (!started) return;
+  const next = wantShop ? elven : dungeon;
+  if (want && want !== next) want.stop();
+  want = next; next.play();
 }
 export function startMusic() {
-  if (!music && MUSIC.src) {
-    music = new Audio(MUSIC.src);
-    music.loop = true; music.volume = MUSIC.volume ?? 0.2; music.play().then(syncMusic).catch(() => { music = null; });
-  }
-  if (!shopMusic && SHOP_MUSIC.src) {
-    shopMusic = new Audio(SHOP_MUSIC.src); shopMusic.loop = true; shopMusic.volume = SHOP_MUSIC.volume ?? 0.2;
-    shopMusic.addEventListener("error", () => { shopMusic.dataset.failed = "1"; syncMusic(); });
-  }
+  if (started) return;
+  started = true;
+  dungeon = makeTrack(MUSIC, dungeonTrack); elven = makeTrack(SHOP_MUSIC, elvenTrack);
+  syncMusic();
 }
 /** switch the background track: true inside the shop, false everywhere else */
 export function setShopMusic(on) { wantShop = on; syncMusic(); }
@@ -295,7 +308,6 @@ export function pollGamepad() {
   if (b(7) || b(5) || b(2)) pressedKeys.add("Space");                // hold to keep swinging
   if (edge(6) || edge(4) || edge(1) || (gp.buttons[6]?.value > 0.5 && !prev.lt)) pressedKeys.add("KeyF");
   if (edge(0)) { pressedKeys.add("KeyE"); pad.a = true; }
-  if (edge(3)) pressedKeys.add("KeyQ");
   if (edge(9)) pause();
   if (edge(12) || (pad.y < -0.6 && lastStickY >= -0.6)) pad.up = true;
   if (edge(13) || (pad.y > 0.6 && lastStickY <= 0.6)) pad.down = true;
@@ -343,7 +355,7 @@ if (IS_TOUCH) {
     const end = () => { el.classList.remove("down"); clearInterval(timer); };
     el.addEventListener("touchend", end); el.addEventListener("touchcancel", end);
   };
-  bind("tSword", "Space", true); bind("tBolt", "KeyF", false); bind("tUse", "KeyE", false); bind("tPotion", "KeyQ", false);
+  bind("tSword", "Space", true); bind("tBolt", "KeyF", false); bind("tUse", "KeyE", false);
   $("tPause").addEventListener("touchstart", (e) => { e.preventDefault(); pause(); }, { passive: false });
   window.addEventListener("contextmenu", (e) => e.preventDefault());
 }

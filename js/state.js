@@ -1,6 +1,6 @@
 // Persistent player state (saved in localStorage) + derived stats.
 const KEY = "dungeonQuest3D_save_v1";
-const DEFAULTS = { gold: 0, potions: 1, mana: 6, maxMana: 10, maxHp: 6, speedLvl: 0, attackLvl: 0, luckLvl: 0, levelIdx: 0 };
+const DEFAULTS = { gold: 0, amulet: 0, mana: 6, maxMana: 10, maxHp: 6, speedLvl: 0, attackLvl: 0, luckLvl: 0, levelIdx: 0 };
 export const S = { ...DEFAULTS, hp: 6 };
 
 export function save() { try { localStorage.setItem(KEY, JSON.stringify({ ...S })); } catch (e) {} }
@@ -17,7 +17,7 @@ export const boltDmg = () => 2 + S.attackLvl;
 export const BOLT_COST = 3;   // lightning is powerful: 3 magic per bolt
 
 export const SHOP_ITEMS = [
-  { id: "health", name: "Health Potion", price: 20, model: "potion_health", desc: "Heals you fully (press Q)", max: () => S.potions >= 20, buy() { S.potions++; } },
+  { id: "amulet", name: "Amulet of Rebirth", price: 100, model: "amulet", desc: "When your health hits zero you rise again at full health — the amulet is then lost (carry one)", max: () => S.amulet >= 1, buy() { S.amulet = 1; } },
   { id: "mana", name: "Mana Potion", price: 20, model: "potion_mana", desc: "+4 magic for your lightning", max: () => S.mana >= S.maxMana, buy() { S.mana = Math.min(S.maxMana, S.mana + 4); } },
   { id: "speed", name: "Speed Potion", price: 50, model: "potion_speed", desc: "Permanently run faster", max: () => S.speedLvl >= 5, buy() { S.speedLvl++; } },
   { id: "attack", name: "Attack Potion", price: 80, model: "potion_attack", desc: "Sword & lightning hit harder", max: () => S.attackLvl >= 5, buy() { S.attackLvl++; } },

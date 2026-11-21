@@ -1,7 +1,7 @@
 // Offline support. Static files are served from cache and refreshed in the background
 // (stale-while-revalidate), so uploading a new version to GitHub Pages is picked up on the next visit.
 // Audio files are passed straight through (browsers stream them with Range requests).
-const CACHE = "dungeon-quest-3d-v2";
+const CACHE = "dungeon-quest-3d-v3";
 const PRECACHE = [
   "index.html",
   "js/audio-config.js",
@@ -13,6 +13,7 @@ const PRECACHE = [
   "js/levelgen.js",
   "js/dialogue.js",
   "js/models-extra.js",
+  "js/music.js",
   "js/thumbs.js",
   "js/main.js",
   "js/shop.js",

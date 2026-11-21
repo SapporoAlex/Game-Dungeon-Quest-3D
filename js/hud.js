@@ -1,7 +1,7 @@
 // DOM heads-up display helpers.
 import { S } from "./state.js";
 const $ = (id) => document.getElementById(id);
-const el = { hearts: $("hearts"), mana: $("manaFill"), manaTxt: $("manaTxt"), gold: $("gold"), potions: $("potions"), title: $("lvlTitle"),
+const el = { hearts: $("hearts"), mana: $("manaFill"), manaTxt: $("manaTxt"), gold: $("gold"), amulet: $("amulet"), title: $("lvlTitle"),
   obj: $("objective"), msg: $("msg"), prompt: $("prompt"), flash: $("flash"), boss: $("boss"), bossFill: $("bossFill"), bossName: $("bossName"),
   mini: $("minimap"), hud: $("hud"), bubble: $("bubble") };
 let msgT = 0, lastHearts = "";
@@ -14,7 +14,7 @@ export const hud = {
     el.mana.style.width = `${(S.mana / S.maxMana) * 100}%`;
     el.manaTxt.textContent = `${S.mana} / ${S.maxMana}`;
     el.gold.textContent = S.gold;
-    el.potions.textContent = S.potions;
+    el.amulet.style.display = S.amulet ? "block" : "none";
   },
   title(t, o) { el.title.textContent = t; el.obj.textContent = o; },
   objective(o) { el.obj.textContent = o; },

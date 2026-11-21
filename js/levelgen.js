@@ -19,14 +19,26 @@ const THEMES = {
   blood: { wall: 0xb06a6a, floor: 0x985858, fog: 0x120304, amb: 0x7a3434 },
   sea: { wall: 0x6aa0a8, floor: 0x6a9094, fog: 0x020a0c, amb: 0x3a6a70 },
 };
-const THEME_BY_KIND = { wizard: ["violet", "crypt", "blood"], tome: ["gold", "moss", "crypt"], princess: ["frost", "sea", "violet"], escape: ["ember", "blood", "crypt", "moss"] };
+const THEME_BY_KIND = { dragon: ["ember", "blood", "crypt", "gold"], finale: ["violet"], wizard: ["violet", "crypt", "blood"], tome: ["gold", "moss", "crypt"], princess: ["frost", "sea", "violet"], escape: ["ember", "blood", "crypt", "moss"] };
 const RUG_PALS = ["crimson", "indigo", "emerald", "amber"];
 
 // ----------------------------------------------------------------------------------------------- story text
-const KINDS = ["escape", "tome", "princess", "wizard"];
-// order of the 30 extra quests: E T P W repeated, with the last slot a wizard (8 wizard, 7 tome, 7 princess, 8 escape)
-const ORDER = Array.from({ length: 30 }, (_, i) => (i === 29 ? "wizard" : KINDS[i % 4]));
+const KINDS = ["escape", "tome", "princess", "wizard", "dragon"];
+// order of the 41 extra quests: escape, tome, princess, wizard, dragon (x8), then the final battle
+const ORDER = Array.from({ length: 41 }, (_, i) => (i === 40 ? "finale" : KINDS[i % 5]));
 const TEXT = {
+  dragon: {
+    names: ["The Wyrm's Lair", "Embers of the Deep", "Dragonfire Cavern", "The Scaled Tyrant", "Smoldering Halls", "Hoard of the Wyrm", "Twin Flames", "The Elder Wyrm"],
+    desc: "Dragons lair in the deepest halls of this dungeon. Track down and slay every dragon — their fire will find you across a room — then return to the stairwell where you began.",
+    hint: "A dragon lairs somewhere in this dungeon. Slay it (or them!), then return to the stairwell.",
+    goalText: "Slay the dragons.",
+  },
+  finale: {
+    names: ["The Final Battle"],
+    desc: "The last trial. In the great hall at the heart of the dungeon wait two dragons, the dark wizard and his captive, the Elven Princess. The doors seal the moment you step inside. Defeat them all, free the princess and fight your way back out.",
+    hint: "The final hall lies somewhere in this dungeon. Once you step inside, its doors seal until every guardian is dead.",
+    goalText: "Slay the 2 dragons and the wizard, then free the princess.",
+  },
   escape: {
     names: ["Out of the Oubliette", "The Long Way Up", "Chains and Cinders", "Breakout at Blackgate", "Run for the Daylight", "The Warden's Maze", "Crypt Crawl", "Last Stair to Freedom"],
     desc: "You have been thrown into a dungeon cell and the guards are awake. Fight or sneak your way through the halls — and look for loose stones — to reach the stairwell on the far side and escape.",
@@ -96,6 +108,20 @@ function layoutRooms(rng, cols, rows, count, minS, maxS) {
   return { g, rooms, passages: null };
 }
 
+/** ordinary rooms-and-corridors dungeon plus one big arena room, reached only through a single corridor / door */
+function layoutFinale(rng) {
+  const base = layoutRooms(rng, 34, 34, 11, 4, 7), g = base.g, rooms = base.rooms;
+  for (const row of g) row.push(...Array(18).fill("#"));                        // 34 -> 52 columns
+  const A = { x: 36, y: 11, w: 14, h: 12, arena: true, doorRow: 17 };
+  for (let r = A.y; r < A.y + A.h; r++) for (let c = A.x; c < A.x + A.w; c++) g[r][c] = ".";
+  const from = rooms.reduce((a, b) => (b.x + b.w > a.x + a.w ? b : a)), r0 = from.y + (from.h >> 1);
+  for (let c = from.x + (from.w >> 1); c <= 34; c++) if (g[r0][c] === "#") g[r0][c] = ".";
+  for (let r = Math.min(r0, A.doorRow); r <= Math.max(r0, A.doorRow); r++) if (g[r][34] === "#") g[r][34] = ".";
+  g[A.doorRow][35] = ".";
+  rooms.push(A);
+  return { g, rooms, passages: null };
+}
+
 function layoutMaze(rng, gw, gh) {
   const cols = gw * 4 + 1, rows = gh * 4 + 1, g = makeGrid(cols, rows), rooms = [], passages = [];
   for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
@@ -125,12 +151,13 @@ function layoutMaze(rng, gw, gh) {
 }
 
 // ----------------------------------------------------------------------------------------------- the generator proper
-function generate(n, kind, seed) {
+function generate(n, kind, seed, count) {
   const rng = mulberry32(seed), ri = (a, b) => a + Math.floor(rng() * (b - a + 1)), pick = (a) => a[Math.floor(rng() * a.length)];
-  const tier = n / 29;                                           // 0 … 1 across the 30 quests
+  const tier = n / (count - 1);                                  // 0 … 1 across the generated quests
   const labyrinth = kind === "tome";
   let lay;
-  if (labyrinth) lay = layoutMaze(rng, 5 + Math.round(tier * 3), 4 + Math.round(tier * 3));
+  if (kind === "finale") lay = layoutFinale(rng);
+  else if (labyrinth) lay = layoutMaze(rng, 5 + Math.round(tier * 3), 4 + Math.round(tier * 3));
   else lay = layoutRooms(rng, 30 + Math.round(tier * 16) + ri(0, 4), 26 + Math.round(tier * 12) + ri(0, 4), 8 + Math.round(tier * 5), 4, kind === "wizard" ? 8 : 7);
   const { g, rooms } = lay, R = g.length, C = g[0].length;
   const rid = new Int16Array(R * C).fill(-1);
@@ -146,6 +173,7 @@ function generate(n, kind, seed) {
   const d0 = bfs(g, sc, sr), dAt = (c, r) => d0[r * C + c];
   rooms.forEach((o) => { const [c, r] = ctr(o); o.dist = dAt(c, r); });
   const maxDist = Math.max(...rooms.map((o) => o.dist));
+  const arena = rooms.find((o) => o.arena), pickRoom = () => pick(rooms.filter((o) => o.id !== 0 && !o.arena));
 
   // ------------------------------------------------------------ doors
   const doors = [], doorSet = new Set(), key = (c, r) => c + "," + r;
@@ -158,6 +186,7 @@ function generate(n, kind, seed) {
     const ns = g[r][c - 1] === "#" && g[r][c + 1] === "#" && open(g, c, r - 1) && open(g, c, r + 1) && (roomAt(c, r - 1) >= 0 || roomAt(c, r + 1) >= 0);
     if ((ew || ns) && rng() < pDoor && !nearDoor(c, r)) addDoor(c, r, false);
   }
+  if (arena && !doorSet.has(arena.x - 1 + "," + arena.doorRow)) addDoor(arena.x - 1, arena.doorRow, false);   // the arena's one and only door
 
   // ------------------------------------------------------------ secret doors: 1-thick walls that would be a shortcut + closets
   const wantSecrets = 1 + Math.floor(tier * 3) + (rng() < 0.5 ? 1 : 0);
@@ -173,6 +202,7 @@ function generate(n, kind, seed) {
   for (const [c, r, [ac, ar, bc, br]] of wallCands) {
     if (secrets >= wantSecrets) break;
     if (nearDoor(c, r) || dAt(ac, ar) < 0 || dAt(bc, br) < 0 || Math.abs(dAt(ac, ar) - dAt(bc, br)) < 12) continue;   // must save a real detour
+    if ((roomAt(ac, ar) >= 0 && rooms[roomAt(ac, ar)].arena) || (roomAt(bc, br) >= 0 && rooms[roomAt(bc, br)].arena)) continue;   // never a way around the arena door
     g[r][c] = "."; addDoor(c, r, true); secrets++; firstSecret = firstSecret || [c, r, ac, ar];
   }
 
@@ -180,7 +210,7 @@ function generate(n, kind, seed) {
   const mark = (c, r) => used.add(key(c, r));
   const wantClosets = labyrinth ? 0 : 1 + (tier > 0.4 ? 1 : 0) + (rng() < 0.4 ? 1 : 0);
   for (let attempt = 0; attempt < 80 && closets.length < wantClosets; attempt++) {
-    const room = pick(rooms.slice(1)); if (!room) break;
+    const room = pickRoom(); if (!room) break;
     const side = pick(["N", "E", "S", "W"]), [dc, dr] = DIRS[side], pc = -dr, pr = dc;     // pc,pr = perpendicular axis
     const along = ri(1, (side === "N" || side === "S" ? room.w : room.h) - 2 + 1) - 1 + 1;   // offset along the side, keeping off the corners
     const ec = side === "E" ? room.x + room.w - 1 : side === "W" ? room.x : room.x + Math.min(room.w - 1, Math.max(0, along));
@@ -228,14 +258,15 @@ function generate(n, kind, seed) {
 
   // ------------------------------------------------------------ props: crates/barrels/tables/chests/bookshelves + rugs
   const rugs = [], rugRooms = new Set();
-  const farRooms = rooms.filter((o) => o.id !== 0 && o !== stairsRoom).sort((a, b) => b.dist - a.dist);
+  const farRooms = rooms.filter((o) => o.id !== 0 && o !== stairsRoom && !o.arena).sort((a, b) => b.dist - a.dist);
   const special = new Set();                                   // rooms that hold the goal (tome / princess / wizard): keep their centres clear
-  const goalRoom = farRooms[0] || rooms[rooms.length - 1];
+  const goalRoom = arena || farRooms[0] || rooms[rooms.length - 1];
   if (kind !== "escape") special.add(goalRoom.id);
+  if (kind === "dragon" && tier >= 0.45 && farRooms[1]) special.add(farRooms[1].id);          // a second dragon in later levels
   const princessRooms = farRooms.filter((o) => o.dist >= maxDist * 0.55).slice(0, 5);
   if (kind === "princess") princessRooms.forEach((o) => special.add(o.id));
   for (const room of rooms) {
-    if (room.id === 0) continue;
+    if (room.id === 0 || room.arena) continue;
     const [cc, cr] = ctr(room); if (special.has(room.id)) mark(cc, cr);
     const area = room.w * room.h, cells = edgeCells(room);
     for (let i = cells.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [cells[i], cells[j]] = [cells[j], cells[i]]; }
@@ -262,7 +293,7 @@ function generate(n, kind, seed) {
   if (labyrinth) {
     let shelves = props.filter((p) => p.t === "bookshelf" && !closetCells.has(key(p.c, p.r))).length, guard = 0;
     while (shelves < 10 && guard++ < 200) {
-      const room = pick(rooms.slice(1)), cells = edgeCells(room).filter((e) => !used.has(key(e.c, e.r)));
+      const room = pickRoom(), cells = edgeCells(room).filter((e) => !used.has(key(e.c, e.r)));
       if (!cells.length) continue;
       const e = pick(cells), [wdc, wdr] = pick(e.walls);
       props.push({ t: "bookshelf", c: e.c, r: e.r, rot: { "0,-1": "S", "0,1": "N", "1,0": "W", "-1,0": "E" }[wdc + "," + wdr] }); mark(e.c, e.r); shelves++;
@@ -278,7 +309,7 @@ function generate(n, kind, seed) {
   const spawn = (t, c, r) => { enemies.push({ t, c, r }); ePlaced.add(key(c, r)); };
   const density = (labyrinth ? 0.55 : 1 / 9) * (0.8 + tier * 0.9);
   for (const room of rooms) {
-    if (room.id === 0) continue;
+    if (room.id === 0 || room.arena) continue;
     const cells = placeCells(room); if (!cells.length) continue;
     let n = labyrinth ? (rng() < density ? 1 + (rng() < tier * 0.5 ? 1 : 0) : 0) : Math.max(1, Math.round(room.w * room.h * density * (0.7 + rng() * 0.6)));
     if (kind === "escape" && room.id !== 0) n += rng() < 0.4 ? 1 : 0;
@@ -291,18 +322,37 @@ function generate(n, kind, seed) {
     const cells = placeCells(goalRoom).filter(([c, r]) => !ePlaced.has(key(c, r)));
     for (let k = 0; k < 3 + Math.round(tier * 3) && cells.length; k++) { const [c, r] = cells.splice(Math.floor(rng() * cells.length), 1)[0]; spawn(rng() < 0.45 + tier * 0.3 ? "chaos" : rng() < 0.5 ? "skeleton" : "archer", c, r); }
   }
+  // dragons: the goal room (and, later on, a second lair) — each with a small guard
+  if (kind === "dragon") {
+    for (const room of tier >= 0.45 && farRooms[1] ? [goalRoom, farRooms[1]] : [goalRoom]) {
+      const [dc2, dr2] = ctr(room); spawn("dragon", dc2, dr2);
+      const cells = placeCells(room).filter(([c, r]) => !ePlaced.has(key(c, r)));
+      for (let k = 0; k < 2 && cells.length; k++) { const [c, r] = cells.splice(Math.floor(rng() * cells.length), 1)[0]; spawn(rng() < 0.5 ? "archer" : "skeleton", c, r); }
+    }
+  }
+  // the final battle: two dragons + the dark wizard guard the captive princess in a big sealed hall
+  let lockRoom = null, finalePrincess = null;
+  if (kind === "finale") {
+    const A = arena, ym = A.y + (A.h >> 1);
+    spawn("dragon", A.x + 7, A.y + 3); spawn("dragon", A.x + 7, A.y + A.h - 4); wizardCell = [A.x + 10, ym]; spawn("wizard", A.x + 10, ym);
+    finalePrincess = [A.x + A.w - 1, ym]; mark(...finalePrincess); mark(A.x + A.w - 2, ym);
+    const cells = placeCells(A).filter(([c, r]) => c > A.x + 3 && !ePlaced.has(key(c, r)) && Math.hypot(c - (A.x + 7), r - (A.y + 3)) > 3 && Math.hypot(c - (A.x + 7), r - (A.y + A.h - 4)) > 3);
+    for (let k = 0; k < 7 && cells.length; k++) { const [c, r] = cells.splice(Math.floor(rng() * cells.length), 1)[0]; spawn(k < 4 ? "archer" : "chaos", c, r); }
+    rugs.push({ c: A.x + 2, r: A.y + 2, w: A.w - 4, h: A.h - 4, pal: "crimson" });
+    lockRoom = { door: [A.x - 1, A.doorRow], rect: [A.x, A.y, A.x + A.w - 1, A.y + A.h - 1] };
+  }
   // a roaming sentry or two in corridors of escape levels
   if (kind === "escape") {
     const corr = []; for (let r = 1; r < R - 1; r++) for (let c = 1; c < C - 1; c++) if (g[r][c] === "." && roomAt(c, r) < 0 && !doorSet.has(key(c, r)) && dAt(c, r) > 12 && !closetCells.has(key(c, r))) corr.push([c, r]);
     for (let k = 0; k < 2 && corr.length; k++) { const [c, r] = corr.splice(Math.floor(rng() * corr.length), 1)[0]; spawn(rng() < 0.5 ? "skeleton" : "goblin", c, r); }
   }
   // cap + make sure there is real opposition
-  while (enemies.length > 64) { const k = Math.floor(rng() * enemies.length); if (enemies[k].t !== "wizard") enemies.splice(k, 1); }
+  while (enemies.length > 64) { const k = Math.floor(rng() * enemies.length); if (enemies[k].t !== "wizard" && enemies[k].t !== "dragon") enemies.splice(k, 1); }
 
   // ------------------------------------------------------------ plates
   const plates = [];
   for (let k = 0; k < 1 + Math.floor(tier * 3); k++) {
-    const room = pick(rooms.slice(1)), cells = placeCells(room); if (!cells.length) continue;
+    const room = pickRoom(), cells = placeCells(room); if (!cells.length) continue;
     const [c, r] = cells[Math.floor(rng() * cells.length)]; plates.push([c, r]);
   }
 
@@ -310,6 +360,8 @@ function generate(n, kind, seed) {
   const out = {};
   if (kind === "tome") { const [c, r] = ctr(goalRoom); out.tome = [c, r]; }
   if (kind === "princess") out.princessSpots = princessRooms.map(ctr);
+  if (kind === "finale") { out.princessSpots = [finalePrincess]; out.lockRoom = lockRoom; }
+  out.tier = tier;
   // facing: along the longest free run from the start cell
   let startDir = "N", bestRun = -1;
   for (const [k, [dc, dr]] of Object.entries(DIRS)) { let run = 0; while (open(g, sc + dc * (run + 1), sr + dr * (run + 1))) run++; if (run > bestRun) { bestRun = run; startDir = k; } }
@@ -323,14 +375,14 @@ function generate(n, kind, seed) {
 }
 
 export function generateLevels() {
-  const out = [], counters = { escape: 0, tome: 0, princess: 0, wizard: 0 };
+  const out = [], counters = { escape: 0, tome: 0, princess: 0, wizard: 0, dragon: 0, finale: 0 };
   ORDER.forEach((kind, i) => {
     const n = i, T = TEXT[kind], nameIdx = counters[kind]++;
-    const body = generate(n, kind, 0x51ed + n * 7919 + kind.length * 31);
+    const body = generate(n, kind, 0x51ed + n * 7919 + kind.length * 31, ORDER.length);
     const themeKey = THEME_BY_KIND[kind][nameIdx % THEME_BY_KIND[kind].length];
     const goal = kind === "escape" ? "stairs" : kind;
     out.push({
-      id: `gen${i + 1}`, title: `Quest ${i + 5}`, subtitle: T.names[nameIdx % T.names.length], desc: T.desc, kind, goal, goalText: T.goalText,
+      id: `gen${i + 1}`, title: kind === "finale" ? "Final Quest" : `Quest ${i + 5}`, subtitle: T.names[nameIdx % T.names.length], desc: T.desc, kind, goal, goalText: T.goalText,
       theme: THEMES[themeKey], ...body,
     });
   });
