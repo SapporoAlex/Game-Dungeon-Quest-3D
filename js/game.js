@@ -44,7 +44,7 @@ export class Play {
     this.torches = []; this.stairs = []; this.hintsDone = new Set();
     this.hasTome = false; this.tome = null; this.princess = null; this.lockState = null; this.bubbleT = 0; this.ambushT = 0; this.ambushMsg = ""; this.ambushed = false;
     this.startGold = S.gold; this.startAmulet = S.amulet; this.startMana = S.mana;
-    S.hp = S.maxHp;
+    S.hp = S.maxHp; this.atkMul = S.momo ? 2 : 1;                 // Momo mode: enemies attack at half rate (cooldowns and wind-ups x2)
 
     // lights
     this.scene.add(new THREE.AmbientLight(this.theme.amb, 1.6));
@@ -234,7 +234,7 @@ export class Play {
     const pn = type === "dragon"
       ? ["body", "neck", "head", "jaw", "wing_L", "wing_R", "tail1", "tail2", "tail3", "leg_FL", "leg_FR", "leg_BL", "leg_BR"]
       : ["body", "head", "arm_L", "arm_R", "leg_L", "leg_R"];
-    const e = { type, d, x, z, yaw: rand(0, 6.28), hp: d.hp, mesh: m, p: parts(m, pn), state: "idle", atk: rand(0.2, d.cd), wind: 0, stagger: 0,
+    const e = { type, d: this.atkMul === 1 ? d : { ...d, cd: d.cd * this.atkMul, wind: d.wind * this.atkMul }, x, z, yaw: rand(0, 6.28), hp: d.hp, mesh: m, p: parts(m, pn), state: "idle", atk: rand(0.2, d.cd), wind: 0, stagger: 0,
       kx: 0, kz: 0, flash: 0, dead: false, deadT: 0, walk: rand(0, 6), senseT: Math.random() * 0.3, los: false, fireCd: rand(1, 3), biting: 0, stuck: 0, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: rand(1, 3), stuckT: 0 };
     this.enemies.push(e);
     return e;
@@ -587,7 +587,7 @@ export class Play {
     // dragon fireball
     if (e.type === "dragon") {
       e.fireCd -= dt;
-      if (e.fireCd <= 0 && e.los && dist > 4.5 && dist < 18) { e.fireCd = rand(2.2, 3.4); this.fireball(e); }
+      if (e.fireCd <= 0 && e.los && dist > 4.5 && dist < 18) { e.fireCd = rand(2.2, 3.4) * this.atkMul; this.fireball(e); }
     }
     if (dist < d.reach && e.los) {
       face(nx, nz, 12);

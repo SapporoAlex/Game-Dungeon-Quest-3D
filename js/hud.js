@@ -10,7 +10,7 @@ export const hud = {
   update() {
     let h = "";
     for (let i = 0; i < S.maxHp; i++) h += `<span class="${i < S.hp ? "full" : "empty"}">♥</span>`;
-    if (h !== lastHearts) { el.hearts.innerHTML = h; lastHearts = h; }
+    if (h !== lastHearts) { el.hearts.innerHTML = h; lastHearts = h; el.hearts.classList.toggle("many", S.maxHp > 10); }
     el.mana.style.width = `${(S.mana / S.maxMana) * 100}%`;
     el.manaTxt.textContent = `${S.mana} / ${S.maxMana}`;
     el.gold.textContent = S.gold;

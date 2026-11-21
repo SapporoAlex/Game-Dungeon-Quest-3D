@@ -3,7 +3,7 @@
 // and when you reach camp. "Continue" always drops you at camp.
 import { renderer, camera, loadModels, endFrame, lock, requestLock, exitLock, resumeAudio, startMusic, pollGamepad, pad, IS_TOUCH } from "./engine.js";
 import { LEVELS } from "./levels.js";
-import { S, save, load, hasSave, resetAll } from "./state.js";
+import { S, save, load, hasSave, resetAll, setMomo } from "./state.js";
 import { hud } from "./hud.js";
 import { Play } from "./game.js";
 import { Shop } from "./shop.js";
@@ -24,6 +24,7 @@ const HELP = IS_TOUCH
 <b>Shift</b><span>Sprint</span></div>
 <div class="help"><b>🎮 Controller</b><span>Left stick move · Right stick look · RT / X sword · LT / B lightning · A use · Start pause · D-pad / A in menus</span></div>`;
 const fsBtn = document.fullscreenEnabled ? `<button class="btn small" data-act="fs">⛶ Fullscreen</button>` : "";
+const momoBtn = (small) => `<button class="btn ${small ? "small" : ""}" data-act="momo">🐾 Momo Mode: ${S.momo ? "ON" : "OFF"}${small ? "" : "<small>20 hearts · enemies attack 50% slower</small>"}</button>`;
 const disposeCur = () => { if (cur) { cur.dispose && cur.dispose(); cur = null; } };
 
 // ---------------------------------------------------------------- title
@@ -53,8 +54,8 @@ function title() {
   }
   show(`<div class="crest">⚔</div><h1>Dungeon Quest <span>3D</span></h1><div class="rule"><i></i></div>
     <p class="tag">Hack, blast and loot your way through the dungeon. Smash crates for gold and green magic bottles — then spend your spoils at Lirael's shop.</p>
-    <div class="menu"><button class="btn" data-act="new">New Game</button>${cont}</div><div>${fsBtn}</div>${HELP}`,
-    { new: () => (hasSave() ? confirmNew() : newGame()), cont: () => camp(), fs: () => document.documentElement.requestFullscreen?.() });
+    <div class="menu"><button class="btn" data-act="new">New Game</button>${cont}${momoBtn()}</div><div>${fsBtn}</div>${HELP}`,
+    { momo: () => { setMomo(!S.momo); title(); }, new: () => (hasSave() ? confirmNew() : newGame()), cont: () => camp(), fs: () => document.documentElement.requestFullscreen?.() });
 }
 function confirmNew() {
   show(`<h2>Start a new game?</h2><div class="rule"><i></i></div><p>This replaces your saved progress.</p><div class="menu"><button class="btn" data-act="yes">Yes, start over</button><button class="btn" data-act="no">Cancel</button></div>`,
@@ -72,10 +73,10 @@ function camp(note) {
   show(`<h2>Camp</h2>${note ? `<p class="note">${note}</p>` : ""}
     <p class="stats">🪙 <b>${S.gold}</b> gold &nbsp; 📿 <b>${S.amulet ? "Rebirth amulet ready" : "no amulet"}</b> &nbsp; ♥ <b>${S.maxHp}</b> health &nbsp; ⚡ <b>${S.mana}/${S.maxMana}</b> magic &nbsp; ⚔ <b>${1 + S.attackLvl}</b> power</p>
     ${allDone ? "<p>🏆 You have conquered every quest in the dungeon!</p>" : ""}
-    <div class="menu row"><button class="btn" data-act="shop">Lirael's Shop</button><button class="btn" data-act="title">Main Menu</button></div>
+    <div class="menu row"><button class="btn" data-act="shop">Lirael's Shop</button><button class="btn" data-act="title">Main Menu</button>${momoBtn(true)}</div>
     <div class="rule"><i></i><span>Choose a quest</span><i></i></div>
     <div id="levelList">${cards}</div>`,
-    { shop: startShop, play: (i) => startLevel(+i), title });
+    { momo: () => { setMomo(!S.momo); camp(S.momo ? "Momo mode on: 20 hearts, and enemies attack 50% slower." : "Momo mode off."); }, shop: startShop, play: (i) => startLevel(+i), title });
   requestAnimationFrame(() => document.querySelector("#levelList .lvl.next")?.scrollIntoView({ block: "center" }));
 }
 
