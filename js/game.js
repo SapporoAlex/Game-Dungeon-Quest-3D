@@ -16,11 +16,11 @@ const THEMES = {
   quest4: { wall: 0x7aa8a0, floor: 0x7a9890, fog: 0x030a09, amb: 0x406860 },
 };
 const DEF = {
-  goblin: { model: "goblin", name: "Goblin", hp: 1, speed: 4.7, dmg: 1, reach: 1.55, cd: 0.6, wind: 0.2, r: 0.4, scale: 1.1, coins: [1, 2] },
-  archer: { model: "goblin", name: "Goblin Archer", hp: 1, speed: 3.1, dmg: 1, reach: 0, cd: 2.1, wind: 0.6, r: 0.4, scale: 1.1, coins: [1, 3], ranged: { min: 4.5, max: 16, arrow: 12.5 } },
+  goblin: { model: "goblin", name: "Goblin", hp: 1, speed: 5.9, dmg: 1, reach: 1.55, cd: 0.55, wind: 0.18, r: 0.4, scale: 1.1, coins: [1, 2] },
+  archer: { model: "goblin", name: "Goblin Archer", hp: 1, speed: 4.0, dmg: 1, reach: 0, cd: 1.5, wind: 0.48, r: 0.4, scale: 1.1, coins: [1, 3], ranged: { min: 4.5, max: 16, arrow: 12.5 } },
   skeleton: { model: "skeleton", name: "Skeleton", hp: 3, speed: 3.8, dmg: 1, reach: 1.95, cd: 0.7, wind: 0.24, r: 0.38, scale: 1.0, coins: [1, 3] },
-  chaos: { model: "chaos", name: "Chaos Warrior", hp: 8, speed: 3.2, dmg: 2, reach: 2.3, cd: 1.0, wind: 0.34, r: 0.6, scale: 1.0, coins: [2, 4] },
-  dragon: { model: "dragon", name: "Red Dragon", hp: 30, speed: 2.8, dmg: 3, reach: 3.3, cd: 1.2, wind: 0.45, r: 1.15, scale: 0.95, coins: [8, 12], boss: true },
+  chaos: { model: "chaos", name: "Chaos Warrior", noKnock: true, hp: 8, speed: 3.2, dmg: 2, reach: 2.3, cd: 1.0, wind: 0.34, r: 0.6, scale: 1.0, coins: [2, 4] },
+  dragon: { model: "dragon", name: "Red Dragon", noKnock: true, hp: 30, speed: 2.8, dmg: 3, reach: 3.3, cd: 1.2, wind: 0.45, r: 1.15, scale: 0.95, coins: [8, 12], boss: true },
   wizard: { model: "wizard", name: "Dark Wizard", hp: 14, speed: 2.7, dmg: 2, reach: 0, cd: 3.1, wind: 0.95, r: 0.45, scale: 1.1, coins: [12, 18], boss: true, ranged: { min: 6, max: 19 } },
 };
 const DIRS = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };
@@ -471,7 +471,9 @@ export class Play {
   }
   damageEnemy(e, dmg, kx, kz, mag = 1.6) {
     if (e.dead) return;
-    e.hp -= dmg; e.flash = 1; e.stagger = e.d.boss ? 0.05 : 0.28; e.kx = kx * mag; e.kz = kz * mag; e.wind = 0;
+    e.hp -= dmg; e.flash = 1;
+    if (e.d.noKnock) { e.stagger = 0; e.kx = e.kz = 0; }                       // chaos warriors and dragons shrug off hits: no knock-back, attacks are not interrupted
+    else { e.stagger = e.d.boss ? 0.05 : 0.28; e.kx = kx * mag; e.kz = kz * mag; e.wind = 0; }
     if (e.state === "idle") this.wake(e);
     sfx.hit();
     this.burst(e.x, 1.1, e.z, 0xff4030, 6, 2.2, 0.35, 0.05);

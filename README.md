@@ -26,7 +26,7 @@ Installed, it launches fullscreen in landscape and works offline (music is strea
 | Move | W A S D | Left stick | Left-side joystick |
 | Look | Mouse (click to capture) / arrow keys | Right stick | Drag on the right side |
 | Short sword | Left click / Space | RT / RB / X | ⚔ |
-| Lightning bolt (3 magic) | Right click / F | LT / LB / B | ⚡ |
+| Lightning bolt (5 magic) | Right click / F | LT / LB / B | ⚡ |
 | Use: doors, crates, chests, shop | E | A | E |
 | Pause | Esc (release mouse) | Start | ❚❚ |
 

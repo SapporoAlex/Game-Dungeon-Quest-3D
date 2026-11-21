@@ -1,7 +1,7 @@
 // Persistent player state (saved in localStorage) + derived stats.
 const KEY = "dungeonQuest3D_save_v1";
-const DEFAULTS = { gold: 0, amulet: 0, mana: 6, maxMana: 10, maxHp: 6, speedLvl: 0, attackLvl: 0, luckLvl: 0, levelIdx: 0 };
-export const S = { ...DEFAULTS, hp: 6 };
+const DEFAULTS = { gold: 0, amulet: 0, mana: 6, maxMana: 10, maxHp: 3, speedLvl: 0, attackLvl: 0, luckLvl: 0, levelIdx: 0 };
+export const S = { ...DEFAULTS, hp: 3 };
 
 export function save() { try { localStorage.setItem(KEY, JSON.stringify({ ...S })); } catch (e) {} }
 export function hasSave() { try { return !!localStorage.getItem(KEY); } catch (e) { return false; } }
@@ -14,7 +14,7 @@ export function resetAll() { Object.assign(S, DEFAULTS); S.hp = S.maxHp; save();
 export const moveSpeed = () => 5.0 + 0.55 * S.speedLvl;
 export const swordDmg = () => 1 + S.attackLvl;
 export const boltDmg = () => 2 + S.attackLvl;
-export const BOLT_COST = 3;   // lightning is powerful: 3 magic per bolt
+export const BOLT_COST = 5;   // lightning is powerful: 5 magic per bolt
 
 export const SHOP_ITEMS = [
   { id: "amulet", name: "Amulet of Rebirth", price: 100, model: "amulet", desc: "When your health hits zero you rise again at full health — the amulet is then lost (carry one)", max: () => S.amulet >= 1, buy() { S.amulet = 1; } },

@@ -42,58 +42,78 @@ function makeInstance(AC, level, wet, irSeconds) {
   return inst;
 }
 
-// ====================================================================================== dark dungeon ambience
+// ====================================================================================== dread: dark dungeon ambience
 export function dungeonTrack(AC, level = 0.4) {
   return {
     start() {
-      const I = makeInstance(AC, level, 0.55, 4.5);
-      // chord roots (D minor -> Bb -> G minor -> A suspended), each held ~22 s with a slow glide in between
-      const CH = [[38, [0, 7, 15]], [34, [0, 7, 16]], [43, [0, 7, 15]], [33, [0, 7, 17]]];
-      const filt = AC.createBiquadFilter(); filt.type = "lowpass"; filt.frequency.value = 340; filt.Q.value = 2.2;
-      const padG = AC.createGain(); padG.gain.value = 0.085; filt.connect(padG); padG.connect(I.input);
-      const lfo = I.osc("sine", 0.06, filt.frequency, 130);                     // slow breathing filter
-      const pad = [0, 1, 2].map((k) => { const x = I.osc("sawtooth", midi(50 + k * 4), filt, 1); x.o.detune.value = (k - 1) * 9; return x; });
-      const sub = I.osc("sine", midi(38), I.input, 0.2);
-      const fifthPad = I.osc("triangle", midi(62), I.input, 0.03);               // faint high ghost
+      const I = makeInstance(AC, level, 0.7, 7);
+      // dissonant clusters: root + minor 2nd + tritone, drifting between roots a semitone or two apart (nothing ever resolves)
+      const CH = [[38, [0, 1, 6]], [37, [0, 6, 13]], [34, [0, 1, 7]], [36, [0, 6, 7]], [33, [0, 1, 6]]];
+      const filt = AC.createBiquadFilter(); filt.type = "lowpass"; filt.frequency.value = 170; filt.Q.value = 5;
+      const padG = AC.createGain(); padG.gain.value = 0.125; filt.connect(padG); padG.connect(I.input);
+      I.osc("sine", 0.04, filt.frequency, 85);                                // the filter slowly opens and closes, like breathing
+      const pad = [0, 1, 2].map((k) => { const x = I.osc("sawtooth", midi(50 + k), filt, 1); x.o.detune.value = (k - 1) * 14; return x; });
+      const sub = I.osc("sine", midi(26), I.input, 0.3), sub2 = I.osc("triangle", midi(38), I.input, 0.06);
+      I.osc("sine", 0.13, sub.g.gain, 0.12);                                    // sub-bass throb
       let ci = 0;
       const setChord = () => {
         const [root, iv] = CH[ci % CH.length], t = AC.currentTime; ci++;
-        pad.forEach((x, k) => x.o.frequency.setTargetAtTime(midi(root + 12 + iv[k]), t, 3.5));
-        sub.o.frequency.setTargetAtTime(midi(root), t, 3.5); fifthPad.o.frequency.setTargetAtTime(midi(root + 24 + iv[2]), t, 3.5);
+        pad.forEach((x, k) => x.o.frequency.setTargetAtTime(midi(root + 12 + iv[k]), t, 5));
+        sub.o.frequency.setTargetAtTime(midi(root - 12), t, 5); sub2.o.frequency.setTargetAtTime(midi(root), t, 5);
       };
-      setChord(); I.every(22000, setChord);
-      // wind: looping noise through a wandering band-pass
+      setChord(); I.every(26000, setChord);
+      // wind / whispering breath
       const wind = AC.createBufferSource(); wind.buffer = noiseBuffer(AC, 6); wind.loop = true;
-      const bp = AC.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 520; bp.Q.value = 0.7;
+      const bp = AC.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 420; bp.Q.value = 1.4;
       const wg = AC.createGain(); wg.gain.value = 0.05; wind.connect(bp); bp.connect(wg); wg.connect(I.input); wind.start(); I.srcs.push(wind);
-      I.osc("sine", 0.045, bp.frequency, 260); I.osc("sine", 0.08, wg.gain, 0.03);
-      // sparse events: bells (D phrygian, low register), dripping water, distant rumbles
-      const SCALE = [50, 51, 53, 55, 57, 58, 60, 62, 63];
-      const bell = (m, vel = 1) => {
+      I.osc("sine", 0.032, bp.frequency, 300); I.osc("sine", 0.055, wg.gain, 0.045);   // slow swells, like waves
+      // slow heartbeat, in episodes that come and go
+      let beat = 0;
+      const thump = (t, g) => { const o = AC.createOscillator(), e = AC.createGain(); o.type = "sine"; o.frequency.setValueAtTime(70, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.18); e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(g, t + 0.015); e.gain.exponentialRampToValueAtTime(0.0001, t + 0.34); o.connect(e); e.connect(I.input); o.start(t); o.stop(t + 0.4); };
+      I.every(1900, () => { beat++; if (beat % 26 < 6) { const t = AC.currentTime + 0.05; thump(t, 0.3); thump(t + 0.3, 0.2); } });
+      const bell = (m, vel = 1) => {                                            // low, inharmonic tolling bell
         const t = AC.currentTime, f = midi(m);
-        for (const [ratio, g, dec] of [[1, 0.075, 5], [2.76, 0.03, 2.4], [5.4, 0.012, 1.2]]) {
+        for (const [ratio, g, dec] of [[1, 0.11, 9], [2.4, 0.045, 5], [3.9, 0.025, 3], [5.9, 0.012, 1.6]]) {
           const o = AC.createOscillator(), e = AC.createGain(); o.type = "sine"; o.frequency.value = f * ratio;
-          e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(g * vel, t + 0.01); e.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+          e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(g * vel, t + 0.008); e.gain.exponentialRampToValueAtTime(0.0001, t + dec);
           o.connect(e); e.connect(I.input); o.start(t); o.stop(t + dec + 0.1);
         }
       };
+      const voices = () => {                                                    // a dissonant, throaty choir swell (minor second apart)
+        const base = pick([50, 51, 56, 57]), t = AC.currentTime, dur = rnd(7, 11);
+        for (const m of [base, base + 1, base + 7]) {
+          const o = AC.createOscillator(), f1 = AC.createBiquadFilter(), f2 = AC.createBiquadFilter(), e = AC.createGain(), lfo = AC.createOscillator(), lg = AC.createGain();
+          o.type = "sawtooth"; o.frequency.value = midi(m); o.detune.value = rnd(-12, 12); f1.type = "bandpass"; f1.frequency.value = 520; f1.Q.value = 5; f2.type = "bandpass"; f2.frequency.value = 900; f2.Q.value = 6;
+          lfo.frequency.value = rnd(4.2, 5.4); lg.gain.value = 5; lfo.connect(lg); lg.connect(o.detune);
+          e.gain.setValueAtTime(0.0001, t); e.gain.linearRampToValueAtTime(0.03, t + dur * 0.45); e.gain.linearRampToValueAtTime(0.0001, t + dur);
+          o.connect(f1); o.connect(f2); f1.connect(e); f2.connect(e); e.connect(I.input); o.start(t); lfo.start(t); o.stop(t + dur + 0.1); lfo.stop(t + dur + 0.1);
+        }
+      };
+      const scrape = () => {                                                    // distant metal dragged across stone
+        const t = AC.currentTime, d = rnd(2, 3.5), n = AC.createBufferSource(), f = AC.createBiquadFilter(), e = AC.createGain();
+        n.buffer = noiseBuffer(AC, 4); f.type = "bandpass"; f.Q.value = 14; f.frequency.setValueAtTime(rnd(700, 1100), t); f.frequency.exponentialRampToValueAtTime(rnd(1800, 3200), t + d);
+        e.gain.setValueAtTime(0.0001, t); e.gain.linearRampToValueAtTime(0.035, t + d * 0.4); e.gain.linearRampToValueAtTime(0.0001, t + d);
+        n.connect(f); f.connect(e); e.connect(I.input); n.start(t); n.stop(t + d + 0.1);
+      };
       const drip = () => {
-        const t = AC.currentTime, o = AC.createOscillator(), e = AC.createGain(); o.type = "sine"; const f = rnd(1500, 2600);
-        o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.6, t + 0.09);
-        e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(0.035, t + 0.005); e.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
-        o.connect(e); e.connect(I.input); o.start(t); o.stop(t + 0.25);
+        const t = AC.currentTime, o = AC.createOscillator(), e = AC.createGain(); o.type = "sine"; const f = rnd(900, 1500);
+        o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.55, t + 0.12);
+        e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(0.03, t + 0.005); e.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+        o.connect(e); e.connect(I.input); o.start(t); o.stop(t + 0.3);
       };
-      const rumble = () => {
-        const t = AC.currentTime, n = AC.createBufferSource(); n.buffer = noiseBuffer(AC, 3); const lp = AC.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 110;
-        const e = AC.createGain(); e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(0.5, t + 0.6); e.gain.exponentialRampToValueAtTime(0.0001, t + 2.8);
-        n.connect(lp); lp.connect(e); e.connect(I.input); n.start(t); n.stop(t + 3);
-        const o = AC.createOscillator(), g = AC.createGain(); o.type = "sine"; o.frequency.setValueAtTime(58, t); o.frequency.exponentialRampToValueAtTime(34, t + 2);
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22, t + 0.3); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.4); o.connect(g); g.connect(I.input); o.start(t); o.stop(t + 2.6);
+      const growl = () => {                                                     // something huge, far below
+        const t = AC.currentTime, n = AC.createBufferSource(), lp = AC.createBiquadFilter(), e = AC.createGain(); n.buffer = noiseBuffer(AC, 4); lp.type = "lowpass"; lp.frequency.setValueAtTime(90, t); lp.frequency.linearRampToValueAtTime(180, t + 1.8);
+        e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(0.65, t + 1.4); e.gain.exponentialRampToValueAtTime(0.0001, t + 3.6);
+        n.connect(lp); lp.connect(e); e.connect(I.input); n.start(t); n.stop(t + 4);
+        const o = AC.createOscillator(), g = AC.createGain(); o.type = "sawtooth"; o.frequency.setValueAtTime(46, t); o.frequency.exponentialRampToValueAtTime(30, t + 3); const lp2 = AC.createBiquadFilter(); lp2.type = "lowpass"; lp2.frequency.value = 160;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 1.2); g.gain.exponentialRampToValueAtTime(0.0001, t + 3.2); o.connect(lp2); lp2.connect(g); g.connect(I.input); o.start(t); o.stop(t + 3.4);
       };
-      const schedule = (fn, lo, hi) => { const go = () => { fn(); I.later(rnd(lo, hi) * 1000, go); }; I.later(rnd(lo, hi) * 600, go); };
-      schedule(() => { const m = pick(SCALE); bell(m); if (Math.random() < 0.35) I.later(rnd(900, 1600), () => bell(pick(SCALE), 0.7)); }, 6, 14);
-      schedule(drip, 3.5, 9);
-      schedule(rumble, 11, 22);
+      const schedule = (fn, lo, hi) => { const go = () => { fn(); I.later(rnd(lo, hi) * 1000, go); }; I.later(rnd(lo, hi) * 500, go); };
+      schedule(() => { bell(pick([50, 51, 56, 44, 45])); if (Math.random() < 0.5) I.later(rnd(1800, 3200), () => bell(pick([56, 57, 44]), 0.8)); }, 26, 48);
+      schedule(voices, 38, 65);
+      schedule(scrape, 48, 85);
+      schedule(growl, 32, 58);
+      schedule(drip, 16, 34);          // long stretches of nothing but hum and waves
       return I;
     },
   };
