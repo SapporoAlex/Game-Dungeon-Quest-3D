@@ -9,6 +9,13 @@ export const MUSIC = {
   volume: 0.18,
 };
 
+// The shop plays its own background track. Drop your file at audio/shop.mp3 (or change the path here).
+// Until that file exists the shop simply keeps playing the main music.
+export const SHOP_MUSIC = {
+  src: "audio/shop.mp3",
+  volume: 0.22,
+};
+
 export const SFX = {
   // name:      { files: [...], volume }
   hit:      { files: ["audio/attack.mp3", "audio/attack2.mp3", "audio/attack3.mp3", "audio/attack4.mp3", "audio/attack5.mp3"], volume: 0.45 }, // weapon / spell hits an enemy
@@ -18,4 +25,5 @@ export const SFX = {
   click:    { files: ["audio/click.mp3"], volume: 0.5 },
   // synthesised by default — add `files: [...]` to any of these to replace them with real samples:
   swing: {}, door: {}, zap: {}, coin: {}, pickup: {}, mana: {}, drink: {}, buy: {}, deny: {}, fire: {}, arrow: {}, roar: {}, stairs: {}, smash: {},
+  bow: {}, lightning: {}, lock: {}, secret: {}, found: {},   // goblin archer shot · enemy wizard lightning · door sealed · secret door · princess / tome found
 };

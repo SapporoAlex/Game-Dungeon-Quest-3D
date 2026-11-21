@@ -14,13 +14,13 @@ export function resetAll() { Object.assign(S, DEFAULTS); S.hp = S.maxHp; save();
 export const moveSpeed = () => 5.0 + 0.55 * S.speedLvl;
 export const swordDmg = () => 1 + S.attackLvl;
 export const boltDmg = () => 2 + S.attackLvl;
-export const BOLT_COST = 1;
+export const BOLT_COST = 3;   // lightning is powerful: 3 magic per bolt
 
 export const SHOP_ITEMS = [
-  { id: "health", name: "Health Potion", price: 2, model: "potion_health", desc: "Heals you fully (press Q)", max: () => S.potions >= 20, buy() { S.potions++; } },
-  { id: "mana", name: "Mana Potion", price: 2, model: "potion_mana", desc: "+4 magic for your lightning", max: () => S.mana >= S.maxMana, buy() { S.mana = Math.min(S.maxMana, S.mana + 4); } },
-  { id: "speed", name: "Speed Potion", price: 5, model: "potion_speed", desc: "Permanently run faster", max: () => S.speedLvl >= 5, buy() { S.speedLvl++; } },
-  { id: "attack", name: "Attack Potion", price: 8, model: "potion_attack", desc: "Sword & lightning hit harder", max: () => S.attackLvl >= 5, buy() { S.attackLvl++; } },
-  { id: "maxhealth", name: "Heart Potion", price: 8, model: "potion_maxhealth", desc: "+2 max health", max: () => S.maxHp >= 14, buy() { S.maxHp += 2; S.hp = S.maxHp; } },
-  { id: "search", name: "Seeker Potion", price: 5, model: "potion_search", desc: "Better loot & wider pickup reach", max: () => S.luckLvl >= 5, buy() { S.luckLvl++; S.maxMana += 2; } },
+  { id: "health", name: "Health Potion", price: 20, model: "potion_health", desc: "Heals you fully (press Q)", max: () => S.potions >= 20, buy() { S.potions++; } },
+  { id: "mana", name: "Mana Potion", price: 20, model: "potion_mana", desc: "+4 magic for your lightning", max: () => S.mana >= S.maxMana, buy() { S.mana = Math.min(S.maxMana, S.mana + 4); } },
+  { id: "speed", name: "Speed Potion", price: 50, model: "potion_speed", desc: "Permanently run faster", max: () => S.speedLvl >= 5, buy() { S.speedLvl++; } },
+  { id: "attack", name: "Attack Potion", price: 80, model: "potion_attack", desc: "Sword & lightning hit harder", max: () => S.attackLvl >= 5, buy() { S.attackLvl++; } },
+  { id: "maxhealth", name: "Heart Potion", price: 80, model: "potion_maxhealth", desc: "+2 max health", max: () => S.maxHp >= 14, buy() { S.maxHp += 2; S.hp = S.maxHp; } },
+  { id: "search", name: "Seeker Potion", price: 50, model: "potion_search", desc: "Better loot & wider pickup reach", max: () => S.luckLvl >= 5, buy() { S.luckLvl++; S.maxMana += 2; } },
 ];

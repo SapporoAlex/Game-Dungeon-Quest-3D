@@ -1,5 +1,6 @@
 // The between-levels 3D shop: elf shopkeeper, hovering items on shelves.
-import { THREE, camera, TEX, inst, parts, glowSprite, labelSprite, keys, mouse, pressed, lock, sfx, moveInput } from "./engine.js";
+import { THREE, camera, TEX, inst, parts, glowSprite, labelSprite, keys, mouse, pressed, lock, sfx, moveInput, sayLine, stopLine, setShopMusic } from "./engine.js";
+import { LIRAEL } from "./dialogue.js";
 import { S, save, SHOP_ITEMS, moveSpeed } from "./state.js";
 import { LEVELS } from "./levels.js";
 import { hud } from "./hud.js";
@@ -8,10 +9,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const ROOM = { x0: -6, x1: 6, z0: -8, z1: 4, h: 3.7 };
 const BLOCK = [{ x0: -1.95, x1: 1.95, z0: -8, z1: -3.55 }];   // counter + keeper's nook
-const GREET = ["Welcome, traveler! Lirael's Emporium has everything a brave adventurer needs.", "Ooh, you survived! Do come in — mind the dungeon mud on my floor."];
-const BUY = ["A fine choice! May it serve you well.", "Pleasure doing business with you!", "That one's my favourite, too.", "Thank you kindly! Come back anytime."];
-const POOR = ["Oh dear… you're a little short on gold.", "Come back when your purse is heavier, dear."];
-const FULL = ["You couldn't possibly carry any more of those!", "You already have all the benefit that one can give."];
+const { greet: GREET, buy: BUY, poor: POOR, full: FULL } = LIRAEL;   // every spoken line (and its voice file) lives in js/dialogue.js
 
 export class Shop {
   constructor(nextIdx, onExit) {
@@ -23,6 +21,7 @@ export class Shop {
     this.build();
     this.scene.add(camera);
     hud.show(true); hud.title("Lirael's Emporium", "Aim at an item and press E to buy. Leave through the door on the right to return to camp."); hud.boss(null); hud.prompt(""); hud.msg("Spend your gold on upgrades — items hover on the shelves.", 5); hud.minimap.style.display = "none";
+    setShopMusic(true);
     this.speak(pick(GREET), 6); this.wave = 2.2;
   }
   build() {
@@ -82,7 +81,7 @@ export class Shop {
     const sign = labelSprite(["EXIT ▶", "Back to camp"], "#9bffb0"); sign.scale.set(1.5, 0.56, 1); sign.position.set(5.4, 3.3, 0.8); s.add(sign);
     const g = glowSprite(0x80ff90, 3, 0.25); g.position.set(5.5, 1.6, 0.8); s.add(g);
   }
-  speak(text, sec = 5) { hud.bubble(`<b>Lirael the Elf:</b> ${text}`); this.speech = sec; }
+  speak(text, sec = 5, note = "") { hud.bubble(`<b>Lirael the Elf:</b> ${text}${note}`); sayLine(text); this.speech = sec; }
 
   collide(x, z, r) {
     if (x < ROOM.x0 + 0.5 + r || x > ROOM.x1 - 0.5 - r || z < ROOM.z0 + 0.6 || z > ROOM.z1 - 0.5) return true;
@@ -144,7 +143,7 @@ export class Shop {
     if (d.max()) { sfx.deny(); this.speak(pick(FULL)); return; }
     if (S.gold < d.price) { sfx.deny(); this.speak(pick(POOR)); return; }
     S.gold -= d.price; d.buy(); save(); sfx.buy(); this.wave = 1.6; hud.flash("255,220,100", 0.25);
-    this.speak(`${pick(BUY)} <i>(${d.name}: ${d.desc})</i>`);
+    this.speak(pick(BUY), 5, ` <i>(${d.name}: ${d.desc})</i>`);
   }
-  dispose() { hud.bubble(null); hud.prompt(""); hud.minimap.style.display = "block"; }
+  dispose() { stopLine(); setShopMusic(false); hud.bubble(null); hud.prompt(""); hud.minimap.style.display = "block"; }
 }

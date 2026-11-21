@@ -7,6 +7,7 @@ import { S, save, load, hasSave, resetAll } from "./state.js";
 import { hud } from "./hud.js";
 import { Play } from "./game.js";
 import { Shop } from "./shop.js";
+import { thumbFor } from "./thumbs.js";
 
 const screen = document.getElementById("screen");
 let cur = null, mode = "title", paused = false, focusIdx = 0;
@@ -26,6 +27,21 @@ const fsBtn = document.fullscreenEnabled ? `<button class="btn small" data-act="
 const disposeCur = () => { if (cur) { cur.dispose && cur.dispose(); cur = null; } };
 
 // ---------------------------------------------------------------- title
+const KIND = {
+  tutorial: ["🎓", "Tutorial"], escape: ["🚪", "Escape"], dragon: ["🐉", "Slay the Dragon"], clear: ["☠", "Clear the Dungeon"],
+  wizard: ["⚡", "Defeat the Dark Wizard"], tome: ["📖", "Find the Tome of Horass"], princess: ["👑", "Rescue the Princess"],
+};
+/** one entry of the vertical quest list: a screenshot banner with the title; hover / focus extends it downwards to show the mission */
+function levelCard(i, state) {
+  const L = LEVELS[i], [icon, label] = KIND[L.kind] || ["⚔", "Quest"], locked = state === "locked";
+  const img = locked ? "" : thumbFor(L);
+  const badge = state === "next" ? "NEXT" : state === "done" ? "✓ CLEARED" : locked ? "🔒 LOCKED" : "";
+  return `<button class="lvl ${state}" data-act="play" data-arg="${i}" ${locked ? "disabled" : ""}>
+    <span class="lvl-banner" style="${img ? `background-image:url(${img})` : ""}"><span class="lvl-shade"></span>
+      <span class="lvl-text"><span class="lvl-num">${L.title}</span><span class="lvl-name">${L.subtitle}</span><span class="lvl-goal">${icon} ${label}</span></span>
+      ${badge ? `<span class="lvl-badge">${badge}</span>` : ""}</span>
+    <span class="lvl-desc"><span class="lvl-desc-in">${locked ? "Clear the previous quest to unlock this mission." : L.desc}</span></span></button>`;
+}
 function title() {
   exitLock(); disposeCur(); mode = "title"; paused = false; hud.show(false);
   let cont = "";
@@ -33,14 +49,15 @@ function title() {
     load();
     const next = Math.min(S.levelIdx, LEVELS.length - 1);
     const sub = S.levelIdx >= LEVELS.length ? "All quests complete" : `${LEVELS[next].title} · ${S.gold} gold`;
-    cont = `<button class="btn" data-act="cont">Continue<br><small>${sub}</small></button>`;
+    cont = `<button class="btn" data-act="cont">Continue<small>${sub}</small></button>`;
   }
-  show(`<h1>DUNGEON QUEST 3D</h1><p>Hack, blast and loot your way through the dungeon. Smash crates for gold and green magic bottles — then spend your spoils at Lirael's shop.</p>
-    <div><button class="btn" data-act="new">New Game</button>${cont}</div><div>${fsBtn}</div>${HELP}`,
+  show(`<div class="crest">⚔</div><h1>Dungeon Quest <span>3D</span></h1><div class="rule"><i></i></div>
+    <p class="tag">Hack, blast and loot your way through the dungeon. Smash crates for gold and green magic bottles — then spend your spoils at Lirael's shop.</p>
+    <div class="menu"><button class="btn" data-act="new">New Game</button>${cont}</div><div>${fsBtn}</div>${HELP}`,
     { new: () => (hasSave() ? confirmNew() : newGame()), cont: () => camp(), fs: () => document.documentElement.requestFullscreen?.() });
 }
 function confirmNew() {
-  show(`<h2>Start a new game?</h2><p>This replaces your saved progress.</p><div><button class="btn" data-act="yes">Yes, start over</button><button class="btn" data-act="no">Cancel</button></div>`,
+  show(`<h2>Start a new game?</h2><div class="rule"><i></i></div><p>This replaces your saved progress.</p><div class="menu"><button class="btn" data-act="yes">Yes, start over</button><button class="btn" data-act="no">Cancel</button></div>`,
     { yes: newGame, no: title });
 }
 function newGame() { resetAll(); startLevel(0); }
@@ -51,16 +68,15 @@ function camp(note) {
   S.mana = Math.max(S.mana, Math.min(S.maxMana, 4));      // a little rest restores some magic
   S.hp = S.maxHp; save();
   const next = S.levelIdx, allDone = next >= LEVELS.length;
-  const done = LEVELS.map((l, i) => i < Math.min(next, LEVELS.length)
-    ? `<button class="btn small" data-act="play" data-arg="${i}">↻ ${l.title}<br><small>${l.subtitle}</small></button>` : "").join("");
-  show(`<h2>Camp</h2>${note ? `<p>${note}</p>` : ""}
-    <p>🪙 <b>${S.gold}</b> gold &nbsp; 🧪 <b>${S.potions}</b> potions &nbsp; ♥ <b>${S.maxHp}</b> health &nbsp; ⚡ <b>${S.mana}/${S.maxMana}</b> magic &nbsp; ⚔ <b>${1 + S.attackLvl}</b> power</p>
+  const cards = LEVELS.map((l, i) => levelCard(i, i < next ? "done" : i === next ? "next" : "locked")).join("");
+  show(`<h2>Camp</h2>${note ? `<p class="note">${note}</p>` : ""}
+    <p class="stats">🪙 <b>${S.gold}</b> gold &nbsp; 🧪 <b>${S.potions}</b> potions &nbsp; ♥ <b>${S.maxHp}</b> health &nbsp; ⚡ <b>${S.mana}/${S.maxMana}</b> magic &nbsp; ⚔ <b>${1 + S.attackLvl}</b> power</p>
     ${allDone ? "<p>🏆 You have conquered every quest in the dungeon!</p>" : ""}
-    <div><button class="btn" data-act="shop">Visit Lirael's Shop</button>
-    ${allDone ? "" : `<button class="btn" data-act="play" data-arg="${next}">Play ${LEVELS[next].title}<br><small>${LEVELS[next].subtitle}</small></button>`}</div>
-    ${done ? `<p style="margin-top:14px">Replay a completed quest</p><div id="levels">${done}</div>` : ""}
-    <div><button class="btn small" data-act="title">Main Menu</button></div>`,
+    <div class="menu row"><button class="btn" data-act="shop">Lirael's Shop</button><button class="btn" data-act="title">Main Menu</button></div>
+    <div class="rule"><i></i><span>Choose a quest</span><i></i></div>
+    <div id="levelList">${cards}</div>`,
     { shop: startShop, play: (i) => startLevel(+i), title });
+  requestAnimationFrame(() => document.querySelector("#levelList .lvl.next")?.scrollIntoView({ block: "center" }));
 }
 
 // ---------------------------------------------------------------- play / shop
@@ -77,16 +93,16 @@ function onEnd(kind, info) {
   const idx = cur.idx, snap = cur;
   if (kind === "dead") {
     mode = "dead";
-    setTimeout(() => show(`<h2 style="color:#ff5050">You Died</h2><p>The dungeon claims another adventurer…</p>
-      <div><button class="btn" data-act="retry">Try Again</button><button class="btn" data-act="camp">Back to Camp</button><button class="btn small" data-act="title">Main Menu</button></div>`,
+    setTimeout(() => show(`<h2 class="dead">You Died</h2><p>The dungeon claims another adventurer…</p>
+      <div class="menu"><button class="btn" data-act="retry">Try Again</button><button class="btn" data-act="camp">Back to Camp</button><button class="btn small" data-act="title">Main Menu</button></div>`,
       { retry: () => { snap.restoreSnapshot(); startLevel(idx); }, camp: () => { snap.restoreSnapshot(); camp("You limp back to camp, defeated."); }, title }), 1600);
   } else {
     mode = "complete"; save();                                        // autosave on quest completion
     const last = idx === LEVELS.length - 1;
-    setTimeout(() => show(`<h2>Quest Complete!</h2><p>${LEVELS[idx].title} — ${LEVELS[idx].subtitle}</p>
+    setTimeout(() => show(`<h2>Quest Complete!</h2><div class="rule"><i></i></div><p>${LEVELS[idx].title} — ${LEVELS[idx].subtitle}</p>
       <p>Enemies slain: <b>${info.kills}</b> · Gold collected: <b>${info.gold}</b> · Total gold: <b>${S.gold}</b></p>
       ${last ? "<p>🏆 That was the final quest — the dungeon is yours!</p>" : ""}<p><i>Progress saved.</i></p>
-      <div><button class="btn" data-act="camp">Continue to Camp</button></div>`,
+      <div class="menu"><button class="btn" data-act="camp">Continue to Camp</button></div>`,
       { camp: () => camp(last ? "Congratulations, hero!" : `${LEVELS[idx].title} cleared.`) }), 900);
   }
 }
@@ -94,7 +110,7 @@ function onEnd(kind, info) {
 // pause: mouse released (desktop), Start button (gamepad) or the pause button (touch)
 function showPause() {
   paused = true;
-  show(`<h2>Paused</h2><div><button class="btn" data-act="resume">Resume</button><button class="btn" data-act="title">Main Menu</button></div>${HELP}`,
+  show(`<h2>Paused</h2><div class="rule"><i></i></div><div class="menu"><button class="btn" data-act="resume">Resume</button><button class="btn" data-act="title">Main Menu</button></div>${HELP}`,
     { resume: () => { paused = false; hide(); requestLock(); }, title: () => { if (mode === "play" && cur && cur.restoreSnapshot) cur.restoreSnapshot(); title(); } });
 }
 const canPause = () => (mode === "play" || mode === "shop") && cur && cur.state !== "dead" && cur.state !== "complete";
@@ -106,12 +122,26 @@ window.addEventListener("dq-pause", () => {
   if (paused) { paused = false; hide(); requestLock(); } else if (canPause() && screen.style.display !== "flex") { exitLock(); showPause(); }
 });
 // controller navigation of HTML menus (D-pad / left stick + A)
+const menuButtons = () => [...screen.querySelectorAll("button.btn, button.lvl:not(:disabled)")];
+// keyboard: arrow keys / W S move between menu entries (the focused quest card extends to show its mission)
+window.addEventListener("keydown", (e) => {
+  if (screen.style.display !== "flex") return;
+  const dir = e.code === "ArrowDown" || e.code === "KeyS" ? 1 : e.code === "ArrowUp" || e.code === "KeyW" ? -1 : 0;
+  if (!dir) return;
+  const btns = menuButtons(); if (!btns.length) return;
+  e.preventDefault();
+  const cur2 = btns.indexOf(document.activeElement);
+  const nx = cur2 < 0 ? (dir > 0 ? 0 : btns.length - 1) : (cur2 + dir + btns.length) % btns.length;
+  btns[nx].focus(); btns[nx].scrollIntoView({ block: "nearest" });
+});
 function navMenu() {
-  const btns = [...screen.querySelectorAll("button.btn")];
+  const btns = menuButtons();
   if (!btns.length) return;
   if (pad.up) focusIdx = (focusIdx + btns.length - 1) % btns.length;
   if (pad.down) focusIdx = (focusIdx + 1) % btns.length;
+  focusIdx = Math.min(focusIdx, btns.length - 1);
   btns.forEach((b, i) => b.classList.toggle("focus", pad.active && i === focusIdx));
+  if ((pad.up || pad.down) && pad.active) btns[focusIdx].scrollIntoView({ block: "nearest" });
   if (pad.a) btns[focusIdx].click();
 }
 
@@ -128,6 +158,7 @@ function frame(now) {
 (async () => {
   const el = document.getElementById("loading");
   try { await loadModels((n, t) => { el.textContent = `Loading models… ${n}/${t}`; }); } catch (e) { el.textContent = "Failed to load models: " + e.message; throw e; }
+  try { await document.fonts?.load("700 22px Cinzel"); } catch (e) {}
   el.style.display = "none"; title(); requestAnimationFrame(frame);
 })();
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("./sw.js").catch(() => {});

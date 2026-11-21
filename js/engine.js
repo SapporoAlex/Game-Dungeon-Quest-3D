@@ -1,7 +1,8 @@
 // Shared engine bits: renderer, textures, model loading, audio, input.
 import * as THREE from "three";
 import { GLTFLoader } from "../vendor/GLTFLoader.js";
-import { MUSIC, SFX } from "./audio-config.js";
+import { MUSIC, SHOP_MUSIC, SFX } from "./audio-config.js";
+import { dialogueFile } from "./dialogue.js";
 export { THREE };
 
 export const T = 3;          // world size of one map tile
@@ -101,8 +102,8 @@ export function labelSprite(lines, color = "#ffe9a8") {
   g.fillStyle = "rgba(10,6,2,0.65)"; g.beginPath(); g.roundRect(4, 4, 248, 88, 14); g.fill();
   g.strokeStyle = "#d8b25a"; g.lineWidth = 3; g.stroke();
   g.textAlign = "center"; g.fillStyle = color;
-  g.font = "bold 28px 'Trebuchet MS',sans-serif"; g.fillText(lines[0], 128, 42);
-  g.font = "bold 24px 'Trebuchet MS',sans-serif"; g.fillStyle = "#ffd24a"; g.fillText(lines[1] || "", 128, 76);
+  g.font = "bold 22px 'Cinzel','Trebuchet MS',serif"; g.fillText(lines[0], 128, 42);
+  g.font = "bold 22px 'Cinzel','Trebuchet MS',serif"; g.fillStyle = "#ffd24a"; g.fillText(lines[1] || "", 128, 76);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }));
   s.scale.set(1.3, 0.49, 1); return s;
@@ -191,15 +192,44 @@ const synth = {
   roar() { noise(0.9, 0.35, 900, 90); tone(70, 0.9, "sawtooth", 0.15, -25); },
   stairs() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.3, "triangle", 0.1, 0, i * 0.12)); },
   smash() { noise(0.3, 0.3, 2500, 200); },
+  bow() { noise(0.12, 0.16, 6000, 1800); tone(220, 0.12, "triangle", 0.06, -120); },
+  lightning() { noise(0.45, 0.35, 10000, 500); tone(180, 0.4, "sawtooth", 0.1, -120); tone(1200, 0.22, "square", 0.05, -900, 0.03); },
+  lock() { tone(110, 0.18, "square", 0.1); tone(80, 0.3, "sawtooth", 0.09, -30, 0.14); noise(0.25, 0.2, 700, 150); },
+  secret() { noise(0.7, 0.2, 500, 90); tone(70, 0.6, "sawtooth", 0.05, -20); },
+  found() { [659, 880, 1175].forEach((f, i) => tone(f, 0.28, "triangle", 0.09, 0, i * 0.1)); },
 };
 export const sfx = {};
 for (const name of Object.keys(SFX)) sfx[name] = () => { if (!sample(name) && synth[name]) synth[name](); };
-let music;
-export function startMusic() {
-  if (music || !MUSIC.src) return;
-  music = new Audio(MUSIC.src);
-  music.loop = true; music.volume = MUSIC.volume ?? 0.2; music.play().catch(() => { music = null; });
+let music, shopMusic, wantShop = false;
+function syncMusic() {
+  // shop: its own track (falls back to the main music if audio/shop.mp3 is missing); everywhere else: main music
+  const shopOk = wantShop && shopMusic && !shopMusic.dataset.failed;
+  if (music) { if (shopOk) music.pause(); else music.play().catch(() => {}); }
+  if (shopMusic) { if (shopOk) shopMusic.play().catch(() => {}); else shopMusic.pause(); }
 }
+export function startMusic() {
+  if (!music && MUSIC.src) {
+    music = new Audio(MUSIC.src);
+    music.loop = true; music.volume = MUSIC.volume ?? 0.2; music.play().then(syncMusic).catch(() => { music = null; });
+  }
+  if (!shopMusic && SHOP_MUSIC.src) {
+    shopMusic = new Audio(SHOP_MUSIC.src); shopMusic.loop = true; shopMusic.volume = SHOP_MUSIC.volume ?? 0.2;
+    shopMusic.addEventListener("error", () => { shopMusic.dataset.failed = "1"; syncMusic(); });
+  }
+}
+/** switch the background track: true inside the shop, false everywhere else */
+export function setShopMusic(on) { wantShop = on; syncMusic(); }
+
+// spoken dialogue: audio/dialogue-<text>.mp3 (silent placeholders until real recordings are dropped in)
+let voice;
+export function sayLine(text) {
+  try {
+    if (voice) voice.pause();
+    voice = new Audio(encodeURI(dialogueFile(text)).replace(/#/g, "%23"));
+    voice.volume = 0.9; voice.play().catch(() => {});
+  } catch (e) {}
+}
+export function stopLine() { try { if (voice) voice.pause(); } catch (e) {} }
 
 // ------------------------------------------------------------------ input
 export const keys = {};

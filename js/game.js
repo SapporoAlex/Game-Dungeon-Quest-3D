@@ -1,7 +1,9 @@
 // Level gameplay: first-person dungeon crawl (walls, doors, enemies, items, spells).
 import {
-  THREE, T, WALL_H, camera, TEX, inst, parts, flashModel, glowSprite, keys, mouse, pressed, lock, sfx, moveInput, rumble,
+  THREE, T, WALL_H, camera, TEX, inst, parts, flashModel, glowSprite, keys, mouse, pressed, lock, sfx, moveInput, rumble, sayLine, stopLine,
 } from "./engine.js";
+import { makeArcher, makeWizard, makePrincess, makeTome, makeBookshelf, makeRug } from "./models-extra.js";
+import { PRINCESS, WIZARD, TOME } from "./dialogue.js";
 import { LEVELS } from "./levels.js";
 import { S, save, moveSpeed, swordDmg, boltDmg, BOLT_COST } from "./state.js";
 import { hud } from "./hud.js";
@@ -14,11 +16,15 @@ const THEMES = {
   quest4: { wall: 0x7aa8a0, floor: 0x7a9890, fog: 0x030a09, amb: 0x406860 },
 };
 const DEF = {
-  goblin: { model: "goblin", name: "Goblin", hp: 2, speed: 3.5, dmg: 1, reach: 1.55, cd: 0.9, wind: 0.28, r: 0.4, scale: 1.1, coins: [1, 2] },
+  goblin: { model: "goblin", name: "Goblin", hp: 1, speed: 3.5, dmg: 1, reach: 1.55, cd: 0.9, wind: 0.28, r: 0.4, scale: 1.1, coins: [1, 2] },
+  archer: { model: "goblin", name: "Goblin Archer", hp: 1, speed: 3.1, dmg: 1, reach: 0, cd: 2.1, wind: 0.6, r: 0.4, scale: 1.1, coins: [1, 3], ranged: { min: 4.5, max: 16, arrow: 12.5 } },
   skeleton: { model: "skeleton", name: "Skeleton", hp: 3, speed: 2.8, dmg: 1, reach: 1.95, cd: 1.0, wind: 0.35, r: 0.38, scale: 1.0, coins: [1, 3] },
-  chaos: { model: "chaos", name: "Chaos Warrior", hp: 6, speed: 2.3, dmg: 2, reach: 2.3, cd: 1.5, wind: 0.5, r: 0.6, scale: 1.0, coins: [2, 4] },
-  dragon: { model: "dragon", name: "Red Dragon", hp: 26, speed: 2.1, dmg: 3, reach: 3.3, cd: 1.7, wind: 0.6, r: 1.15, scale: 0.95, coins: [8, 12], boss: true },
+  chaos: { model: "chaos", name: "Chaos Warrior", hp: 8, speed: 2.3, dmg: 2, reach: 2.3, cd: 1.5, wind: 0.5, r: 0.6, scale: 1.0, coins: [2, 4] },
+  dragon: { model: "dragon", name: "Red Dragon", hp: 30, speed: 2.1, dmg: 3, reach: 3.3, cd: 1.7, wind: 0.6, r: 1.15, scale: 0.95, coins: [8, 12], boss: true },
+  wizard: { model: "wizard", name: "Dark Wizard", hp: 14, speed: 2.7, dmg: 2, reach: 0, cd: 3.1, wind: 0.95, r: 0.45, scale: 1.1, coins: [12, 18], boss: true, ranged: { min: 6, max: 19 } },
 };
+const DIRS = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };
+const LORE_QUIET = 14;
 const rand = (a, b) => a + Math.random() * (b - a);
 const irand = (a, b) => Math.floor(rand(a, b + 1));
 const cx = (c) => (c + 0.5) * T;
@@ -28,7 +34,7 @@ export class Play {
     this.onEnd = onEnd;
     this.idx = levelIdx;
     const L = (this.L = LEVELS[levelIdx]);
-    this.theme = THEMES[L.id];
+    this.theme = L.theme || THEMES[L.id] || THEMES.quest1;
     this.rows = L.map.length; this.cols = L.map[0].length;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(this.theme.fog);
@@ -36,6 +42,7 @@ export class Play {
     this.t = 0; this.state = "play"; this.kills = 0; this.noise = 0;
     this.doors = []; this.props = []; this.enemies = []; this.items = []; this.shots = []; this.fx = []; this.plates = [];
     this.torches = []; this.stairs = []; this.hintsDone = new Set();
+    this.hasTome = false; this.tome = null; this.princess = null; this.lockState = null; this.bubbleT = 0;
     this.startGold = S.gold; this.startPotions = S.potions; this.startMana = S.mana;
     S.hp = S.maxHp;
 
@@ -66,18 +73,32 @@ export class Play {
 
   faceYaw(d) { return { N: 0, E: -Math.PI / 2, S: Math.PI, W: Math.PI / 2 }[d] ?? 0; }
   objectiveText() {
-    const g = this.L.goal;
-    if (g === "stairs") return "Find the stairwell and descend.";
+    const g = this.L.goal, alive = this.enemies.filter((e) => !e.dead).length;
+    if (g === "stairs") return this.L.kind === "escape" ? "Escape! Find the stairwell and descend." : "Find the stairwell and descend.";
     if (g === "dragon") return this.dragonDead() ? "The dragon is dead — return to the stairwell!" : "Slay the Red Dragon, then take the stairwell.";
-    return this.enemies.filter((e) => !e.dead).length ? `Defeat every enemy (${this.enemies.filter((e) => !e.dead).length} left).` : "All foes defeated — take a stairwell!";
+    if (g === "wizard") return this.wizardDead() ? "The Dark Wizard is dead — return to the stairwell!" : "Defeat the Dark Wizard (watch out for lightning!), then take the stairwell.";
+    if (g === "tome") return this.hasTome ? "You have the Tome of Horass — return to the stairwell where you began!" : "Search the labyrinth for the Tome of Horass.";
+    if (g === "princess") return this.princess && this.princess.found ? "The Elven Princess is following you — reach the stairwell!" : "Find the Elven Princess, hidden in a room far from here.";
+    return alive ? `Defeat every enemy (${alive} left).` : "All foes defeated — take a stairwell!";
   }
   dragonDead() { return !this.enemies.some((e) => e.type === "dragon" && !e.dead); }
-  stairsOpen() { const g = this.L.goal; return g === "stairs" || (g === "dragon" && this.dragonDead()) || (g === "clear" && !this.enemies.some((e) => !e.dead)); }
+  wizardDead() { return !this.enemies.some((e) => e.type === "wizard" && !e.dead); }
+  stairsOpen() {
+    const g = this.L.goal;
+    return g === "stairs" || (g === "dragon" && this.dragonDead()) || (g === "wizard" && this.wizardDead()) || (g === "tome" && this.hasTome)
+      || (g === "princess" && !!this.princess && this.princess.found) || (g === "clear" && !this.enemies.some((e) => !e.dead));
+  }
+  sealedText() {
+    return { dragon: "The stairwell is sealed — slay the Red Dragon first!", wizard: "The stairwell is sealed — defeat the Dark Wizard first!", tome: "The stairwell is sealed — find the Tome of Horass first!",
+      princess: "The stairwell is sealed — find the Elven Princess first!" }[this.L.goal] || "The stairwell is sealed — defeat every enemy first!";
+  }
+  say(who, text, sec = 6) { hud.bubble(`<b>${who}:</b> ${text}`); sayLine(text); this.bubbleT = sec; }
 
   // ------------------------------------------------------------------ geometry
   ch(c, r) { return this.L.map[r]?.[c]; }
   isWall(c, r) { return c < 0 || r < 0 || c >= this.cols || r >= this.rows || this.L.map[r][c] === "#"; }
   doorAt(c, r) { return this.doors.find((d) => d.c === c && d.r === r); }
+  flowWall(c, r) { if (this.isWall(c, r)) return true; const d = this.doorAt(c, r); return !!d && (d.locked || (d.secret && d.target === 0)); }
   solid(c, r) { if (this.isWall(c, r)) return true; const d = this.doorAt(c, r); return !!d && d.open < 0.85; }
 
   buildLevel() {
@@ -125,14 +146,15 @@ export class Play {
       this.torches.push({ x: px + nx * 0.25, z: pz + nz * 0.25, flame, ph: Math.random() * 6 });
     }
 
-    // doors
+    // doors — secret doors are plain wall segments, a touch lighter than the walls around them, that slide aside when used
+    const secretMat = new THREE.MeshLambertMaterial({ map: TEX.wall, color: new THREE.Color(theme.wall).multiplyScalar(1.12) });
     for (const d of L.doors) {
-      const m = inst("door");
       const ns = this.isWall(d.c - 1, d.r) && this.isWall(d.c + 1, d.r);
-      m.rotation.y = ns ? 0 : Math.PI / 2;
-      m.position.set(cx(d.c), 0, cx(d.r));
+      let m;
+      if (d.secret) { m = new THREE.Mesh(new THREE.BoxGeometry(T - 0.04, WALL_H - 0.002, T - 0.04), secretMat); m.position.set(cx(d.c), WALL_H / 2, cx(d.r)); }
+      else { m = inst("door"); m.rotation.y = ns ? 0 : Math.PI / 2; m.position.set(cx(d.c), 0, cx(d.r)); }
       this.scene.add(m);
-      this.doors.push({ c: d.c, r: d.r, x: cx(d.c), z: cx(d.r), mesh: m, open: 0, target: 0 });
+      this.doors.push({ c: d.c, r: d.r, x: cx(d.c), z: cx(d.r), mesh: m, open: 0, target: 0, secret: !!d.secret, ns, locked: false, found: false });
     }
     // stairs
     for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) if (this.ch(c, r) === "E") {
@@ -150,8 +172,14 @@ export class Play {
       const m = inst("plate"); m.position.set(cx(c), 0.01, cx(r)); this.scene.add(m);
       this.plates.push({ x: cx(c), z: cx(r), used: false, mesh: m });
     }
+    // persian rugs
+    for (const rg of L.rugs || []) {
+      const rug = makeRug(rg.w * T - 0.9, rg.h * T - 0.9, rg.pal);
+      rug.position.set((rg.c + rg.w / 2) * T, 0.03, (rg.r + rg.h / 2) * T); this.scene.add(rug);
+    }
     // props
     for (const p of L.props) this.addProp(p);
+    this.buildGoalObjects();
     // enemies (some levels are thinned: the original had random variants per room)
     for (const e of L.enemies) {
       if (e.t === "dragon" && L.goal === "stairs") continue;                 // escape quests have no boss
@@ -159,9 +187,30 @@ export class Play {
     }
   }
 
+  buildGoalObjects() {
+    const L = this.L;
+    if (L.goal === "tome" && L.tome) {
+      const [c, r] = L.tome, m = makeTome(); m.position.set(cx(c), 1.0, cx(r)); this.scene.add(m);
+      const glow = glowSprite(0xa070ff, 2.8, 0.7); glow.position.set(cx(c), 1.1, cx(r)); this.scene.add(glow);
+      this.tome = { x: cx(c), z: cx(r), mesh: m, glow, c, r };
+    }
+    if (L.goal === "princess" && L.princessSpots && L.princessSpots.length) {
+      const [c, r] = L.princessSpots[Math.floor(Math.random() * L.princessSpots.length)];   // a random far-away room each time
+      const m = makePrincess(); m.scale.setScalar(1.05); m.position.set(cx(c), 0, cx(r)); this.scene.add(m);
+      this.princess = { x: cx(c), z: cx(r), c, r, yaw: rand(0, 6.28), mesh: m, p: parts(m, ["body", "head", "arm_L", "arm_R"]), found: false, walk: 0, sayT: 25, tele: 0 };
+    }
+  }
+
   addProp(p) {
-    const m = inst(p.t);
     const x = cx(p.c), z = cx(p.r);
+    if (p.t === "bookshelf") {                                    // stands against a wall, faces `rot`; searchable like a chest
+      const [dx, dz] = DIRS[p.rot] || DIRS.S, bx = x - dx * (T / 2 - 0.32), bz = z - dz * (T / 2 - 0.32), along = dx === 0 ? [1, 0] : [0, 1];
+      const sm = makeBookshelf(); sm.position.set(bx, 0, bz); sm.rotation.y = Math.atan2(dx, dz); this.scene.add(sm);
+      const sp = { kind: "bookshelf", x: bx, z: bz, mesh: sm, opened: false, r: 0.55, lidA: 0, circles: [-0.85, 0, 0.85].map((k) => [bx + along[0] * k, bz + along[1] * k]) };
+      sp.glint = glowSprite(0xffe08a, 0.9, 0.8); sp.glint.position.set(bx + dx * 0.35, 1.45, bz + dz * 0.35); this.scene.add(sp.glint);
+      this.props.push(sp); return;
+    }
+    const m = inst(p.t);
     m.position.set(x, 0, z);
     if (p.t === "table") m.rotation.y = p.rot === "ns" ? Math.PI / 2 : 0;
     else if (p.t === "chest") m.rotation.y = { N: Math.PI, S: 0, E: Math.PI / 2, W: -Math.PI / 2 }[p.rot] ?? 0;
@@ -175,13 +224,13 @@ export class Play {
 
   addEnemy(type, x, z) {
     const d = DEF[type];
-    const m = inst(d.model); m.scale.setScalar(d.scale);
+    const m = type === "archer" ? makeArcher() : type === "wizard" ? makeWizard() : inst(d.model); m.scale.setScalar(d.scale);
     m.position.set(x, 0, z); this.scene.add(m);
     const pn = type === "dragon"
       ? ["body", "neck", "head", "jaw", "wing_L", "wing_R", "tail1", "tail2", "tail3", "leg_FL", "leg_FR", "leg_BL", "leg_BR"]
       : ["body", "head", "arm_L", "arm_R", "leg_L", "leg_R"];
     const e = { type, d, x, z, yaw: rand(0, 6.28), hp: d.hp, mesh: m, p: parts(m, pn), state: "idle", atk: rand(0.2, d.cd), wind: 0, stagger: 0,
-      kx: 0, kz: 0, flash: 0, dead: false, deadT: 0, walk: rand(0, 6), senseT: Math.random() * 0.3, los: false, fireCd: rand(1, 3), biting: 0, stuck: 0 };
+      kx: 0, kz: 0, flash: 0, dead: false, deadT: 0, walk: rand(0, 6), senseT: Math.random() * 0.3, los: false, fireCd: rand(1, 3), biting: 0, stuck: 0, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: rand(1, 3), stuckT: 0 };
     this.enemies.push(e);
     return e;
   }
@@ -229,7 +278,7 @@ export class Play {
       const id = q[i], c = id % cols, r = (id / cols) | 0;
       for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nc = c + dc, nr = r + dr;
-        if (this.isWall(nc, nr) || flow[nr * cols + nc] >= 0) continue;
+        if (this.flowWall(nc, nr) || flow[nr * cols + nc] >= 0) continue;
         flow[nr * cols + nc] = flow[id] + 1; q.push(nr * cols + nc);
       }
     }
@@ -242,8 +291,8 @@ export class Play {
     let best = here, bc = c, br = r;
     for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
       const nc = c + dc, nr = r + dr;
-      if (this.isWall(nc, nr)) continue;
-      if (dc && dr && (this.isWall(c + dc, r) || this.isWall(c, r + dr))) continue;
+      if (this.flowWall(nc, nr)) continue;
+      if (dc && dr && (this.flowWall(c + dc, r) || this.flowWall(c, r + dr))) continue;
       const v = this.flow[nr * cols + nc];
       if (v >= 0 && v < best) { best = v; bc = nc; br = nr; }
     }
@@ -347,7 +396,7 @@ export class Play {
     this.scene.add(m, glow); this.items.push(it);
   }
   rollLoot(kind) {
-    let n = kind === "chest" ? 3 : 1 + (Math.random() < 0.25 + 0.1 * S.luckLvl ? 1 : 0);
+    let n = kind === "chest" ? 3 : kind === "bookshelf" ? 2 : 1 + (Math.random() < 0.25 + 0.1 * S.luckLvl ? 1 : 0);
     const out = [];
     for (let i = 0; i < n; i++) {
       const r = Math.random();
@@ -395,7 +444,8 @@ export class Play {
       pr.broken = true; sfx.smash();
       this.burst(pr.x, 0.6, pr.z, 0x8a5a2b, 14, 3.5, 0.7, 0.09);
       this.scene.remove(pr.mesh);
-    } else { this.burst(pr.x, 1.0, pr.z, 0xffe08a, 10, 2.5, 0.6, 0.05); if (pr.glint) { this.scene.remove(pr.glint); pr.glint = null; } }
+    } else if (pr.kind === "bookshelf") { this.burst(pr.x, 1.3, pr.z, 0xf0e2b8, 14, 2.5, 0.7, 0.06); hud.msg("You rummage through the dusty books…", 2); if (pr.glint) { this.scene.remove(pr.glint); pr.glint = null; } }
+    else { this.burst(pr.x, 1.0, pr.z, 0xffe08a, 10, 2.5, 0.6, 0.05); if (pr.glint) { this.scene.remove(pr.glint); pr.glint = null; } }
     const loot = this.rollLoot(pr.kind);
     if (!loot.length) hud.msg("Nothing inside…", 1.8);
     this.dropLoot(pr.x, pr.z, loot);
@@ -424,11 +474,15 @@ export class Play {
     if (Math.random() < 0.28) loot.push(["mana", 1]);
     if (Math.random() < 0.22) loot.push(["health", 1]);
     if (e.type === "dragon") { loot.push(["health", 2], ["mana", 2]); hud.boss(null); hud.msg("The Red Dragon has fallen!", 5); }
+    if (e.type === "wizard") {
+      loot.push(["health", 2], ["mana", 3]); hud.boss(null); hud.msg("The Dark Wizard has fallen!", 5); this.say("Dark Wizard", WIZARD.dying[0], 4);
+      const ud = e.mesh.userData; if (ud.orbLight) ud.orbLight.intensity = 0; if (ud.eyeMat) ud.eyeMat.color.setHex(0x203a24); if (ud.orb) ud.orb.visible = false;
+    }
     this.dropLoot(e.x, e.z, loot);
     this.burst(e.x, 1, e.z, 0xcccccc, 10, 2.5, 0.8, 0.1);
     hud.objective(this.objectiveText());
   }
-  wake(e) { if (e.state !== "idle") return; e.state = "chase"; if (e.type === "dragon") { sfx.roar(); this.aliveBoss = e; } }
+  wake(e) { if (e.state !== "idle") return; e.state = "chase"; if (e.type === "dragon") { sfx.roar(); this.aliveBoss = e; } if (e.type === "wizard") { this.aliveBoss = e; this.say("Dark Wizard", WIZARD.taunt[Math.floor(Math.random() * WIZARD.taunt.length)], 5); } }
 
   swordAttack() {
     const p = this.p; p.swing = 0.32; p.cd = 0.4; p.swingHit = false; sfx.swing(); this.noise = 0.5;
@@ -514,6 +568,7 @@ export class Play {
     if (e.state === "idle") { return; }
     if (e.stagger > 0) { e.stagger -= dt; this.moveEnt(e, e.kx * dt * 3, e.kz * dt * 3, d.r); e.kx *= 0.9; e.kz *= 0.9; return; }
     const face = (tx, tz, rate = 10) => { const a = Math.atan2(tx, tz); let df = a - e.yaw; df = Math.atan2(Math.sin(df), Math.cos(df)); e.yaw += df * Math.min(1, rate * dt); };
+    if (d.ranged) { this.updateRanged(e, dt, nx, nz, dist, face); return; }
     if (e.wind > 0) {
       face(nx, nz, 14); e.wind -= dt;
       if (e.wind <= 0) {
@@ -536,7 +591,7 @@ export class Play {
     if (e.los && dist < 18) dir = [nx, nz];
     else { dir = this.flowDir(e); if (!dir) dir = [nx, nz]; }
     face(dir[0], dir[1], 8);
-    { const dd = this.doorAt(Math.floor((e.x + dir[0] * (d.r + 0.8)) / T), Math.floor((e.z + dir[1] * (d.r + 0.8)) / T)); if (dd && dd.target === 0) { dd.target = 1; sfx.door(); } }
+    this.openAhead(e, dir);
     const sp = d.speed * (e.type === "dragon" && dist > 8 ? 1.25 : 1);
     const ox = e.x, oz = e.z;
     this.moveEnt(e, dir[0] * sp * dt, dir[1] * sp * dt, d.r);
@@ -548,6 +603,55 @@ export class Play {
     }
     if (dist < d.r + this.p.r) { this.moveEnt(e, -nx * 0.02, -nz * 0.02, d.r); }
     e.walk += Math.hypot(e.x - ox, e.z - oz) * 2.4 / (e.type === "dragon" ? 1.5 : 1);
+  }
+  openAhead(e, dir) {
+    const dd = this.doorAt(Math.floor((e.x + dir[0] * (e.d.r + 0.8)) / T), Math.floor((e.z + dir[1] * (e.d.r + 0.8)) / T));
+    if (dd && dd.target === 0 && !dd.secret && !dd.locked) { dd.target = 1; sfx.door(); }
+  }
+  // ranged enemies (goblin archers, the dark wizard): keep their distance, sidestep, stop to aim, then shoot / cast
+  updateRanged(e, dt, nx, nz, dist, face) {
+    const d = e.d, rg = d.ranged, isW = e.type === "wizard";
+    e.strafeT -= dt; if (e.strafeT <= 0) { e.strafeT = rand(1.2, 3); e.strafe = Math.random() < 0.5 ? 1 : -1; }
+    if (e.wind > 0) {
+      face(nx, nz, 14); e.wind -= dt;
+      if (e.wind <= 0) { e.atk = d.cd * rand(0.9, 1.35); if (isW) this.wizardCast(e); else this.shootArrow(e); }
+      return;
+    }
+    if (e.los && dist < rg.max && dist > 0.6 && e.atk <= 0) { e.wind = d.wind; face(nx, nz, 14); return; }
+    const px = -nz * e.strafe, pz = nx * e.strafe;
+    let dir, sp = d.speed;
+    if (e.los && dist < rg.min) dir = [-nx * 0.75 + px * 0.5, -nz * 0.75 + pz * 0.5];                 // too close: back away
+    else if (e.los && dist <= rg.max * 0.8) { dir = [px, pz]; sp *= 0.45; }                           // good range: sidestep
+    else dir = e.los && dist > 3 ? [nx, nz] : (this.flowDir(e) || [nx, nz]);                           // out of range: close in
+    const l = Math.hypot(dir[0], dir[1]) || 1; dir = [dir[0] / l, dir[1] / l];
+    if (e.los) face(nx, nz, 8); else face(dir[0], dir[1], 8);
+    this.openAhead(e, dir);
+    const ox = e.x, oz = e.z;
+    this.moveEnt(e, dir[0] * sp * dt, dir[1] * sp * dt, d.r);
+    for (const o of this.enemies) {
+      if (o === e || o.dead) continue;
+      const ex = e.x - o.x, ez = e.z - o.z, ed = Math.hypot(ex, ez), min = d.r + o.d.r;
+      if (ed < min && ed > 0.001) this.moveEnt(e, ex / ed * (min - ed) * 0.5, ez / ed * (min - ed) * 0.5, d.r);
+    }
+    const moved = Math.hypot(e.x - ox, e.z - oz);
+    if (moved < sp * dt * 0.25) { e.stuckT += dt; if (e.stuckT > 0.4) { e.strafe = -e.strafe; e.strafeT = rand(1, 2); e.stuckT = 0; } } else e.stuckT = 0;
+    e.walk += moved * 2.4;
+  }
+  shootArrow(e) {
+    sfx.bow(); e.strike = 0.25;
+    const dx = this.p.x - e.x, dz = this.p.z - e.z, a = Math.atan2(dx, dz) + rand(-0.05, 0.05), vx = Math.sin(a), vz = Math.cos(a), sp = e.d.ranged.arrow;
+    const m = inst("arrow"); m.rotation.y = Math.atan2(vx, vz); m.position.set(e.x + vx * 0.9, 1.15, e.z + vz * 0.9); this.scene.add(m);
+    this.shots.push({ kind: "arrow", m, x: m.position.x, z: m.position.z, vx: vx * sp, vz: vz * sp, dmg: e.d.dmg, life: 2.5 });
+  }
+  wizardCast(e) {
+    const p = this.p, dx = p.x - e.x, dz = p.z - e.z, dist = Math.hypot(dx, dz) || 1;
+    const from = new THREE.Vector3(e.x, 2.2, e.z); const orb = e.mesh.userData.orb; if (orb) orb.getWorldPosition(from);
+    const hit = dist < 20 && this.losWide(e, 0.25);
+    const reach = hit ? Math.max(0.5, dist - 1.1) : Math.min(dist, this.rayLen(e.x, e.z, dx / dist, dz / dist, 20));   // the bolt ends just short of the camera
+    const to = new THREE.Vector3(e.x + dx / dist * reach, hit ? 0.9 : 1.2, e.z + dz / dist * reach);
+    this.bolt(from, to, 0xa070ff); this.burst(to.x, to.y, to.z, 0xb890ff, 12, 3.5, 0.5, 0.06);
+    sfx.lightning(); e.strike = 0.3; this.camShake = Math.max(this.camShake, hit ? 0.2 : 0.05);
+    if (hit) { hud.flash("170,110,255", 0.5); this.hurtPlayer(e.d.dmg, e.x, e.z); }
   }
   animEnemy(e, dt, dist) {
     const P = e.p, m = e.mesh, t = this.t;
@@ -575,6 +679,18 @@ export class Play {
     P.body.position.y = idle ? Math.sin(t * 1.5 + e.walk) * 0.015 : Math.abs(w) * 0.05;
     P.head.rotation.y = idle ? Math.sin(t * 0.8 + e.walk) * 0.25 : 0;
     P.body.rotation.x = e.wind > 0 ? 0.25 * (1 - e.wind / e.d.wind) : (idle ? 0 : 0.1);
+    if (e.type === "archer") {
+      const aiming = e.wind > 0, ud = m.userData;
+      if (ud.nock) ud.nock.visible = aiming;
+      if (aiming || e.strike > 0) { P.arm_L.rotation.x = -1.45; P.arm_L.rotation.z = 0; P.arm_R.rotation.x = aiming ? -1.35 : -0.5; P.arm_R.rotation.z = aiming ? 0.35 : 0.1; P.body.rotation.x = 0; }
+      else if (!idle) P.arm_L.rotation.x = -0.9;                                  // bow carried ready
+    }
+    if (e.type === "wizard") {
+      const ud = m.userData, u = e.wind > 0 ? 1 - e.wind / e.d.wind : 0, pulse = u + (e.strike > 0 ? 1 : 0);
+      if (ud.orb) { ud.orb.scale.setScalar(1 + pulse * 1.6 + Math.sin(t * 5) * 0.08); ud.orbLight.intensity = 1.4 + pulse * 4.5; }
+      if (ud.eyeMat) ud.eyeMat.color.setRGB(0.22 + u * 0.6, 1, 0.36 + u * 0.4);
+      P.body.position.y = 0.12 + Math.sin(t * 2.2 + e.walk) * 0.07;                 // hovers slightly
+    }
   }
   fireball(e) {
     sfx.fire(); e.biting = 0.8;
@@ -615,7 +731,7 @@ export class Play {
       if (d > range) return; if (d > 1.0 && (dx * fx + dz * fz) / d < 0.5) return;
       if (d < bd) { bd = d; best = { kind, o }; }
     };
-    for (const d of this.doors) consider("door", d, d.x, d.z, 3.0);
+    for (const d of this.doors) consider("door", d, d.x, d.z, d.secret ? 2.4 : 3.0);
     for (const pr of this.props) if (!pr.opened) consider("prop", pr, pr.x, pr.z, 2.5);
     return best;
   }
@@ -623,10 +739,12 @@ export class Play {
     const t = this.interactTarget(); if (!t) return;
     if (t.kind === "door") {
       const d = t.o;
+      if (d.locked) { hud.msg("The door is sealed by dark magic — clear the hall first!", 2.5); sfx.deny(); return; }
       if (d.target === 1) { // closing: refuse if someone stands in the doorway
         if (Math.hypot(this.p.x - d.x, this.p.z - d.z) < 1.3 || this.enemies.some((e) => !e.dead && Math.hypot(e.x - d.x, e.z - d.z) < 1.5)) { hud.msg("Something is in the way.", 1.5); sfx.deny(); return; }
       }
-      d.target = d.target ? 0 : 1; sfx.door(); this.noise = Math.max(this.noise, 0.2);
+      d.target = d.target ? 0 : 1; this.noise = Math.max(this.noise, 0.2);
+      if (d.secret && !d.found) { d.found = true; sfx.secret(); hud.msg("A secret door grinds open!", 3); this.burst(d.x, 1.4, d.z, 0xc8b898, 14, 2, 0.8, 0.07); } else sfx.door();
     } else this.openProp(t.o);
   }
 
@@ -659,8 +777,11 @@ export class Play {
     if (this.flowT <= 0 || pc !== this.flowCell) { this.flowT = 0.3; this.flowCell = pc; this.computeFlow(); }
     for (const d of this.doors) {
       if (d.open !== d.target) { d.open += Math.sign(d.target - d.open) * dt * 1.6; if (Math.abs(d.open - d.target) < 0.03) d.open = d.target; }
-      d.mesh.position.y = d.open * 3.05;
+      if (d.secret) d.mesh.position.set(d.x + (d.ns ? d.open * (T - 0.05) : 0), WALL_H / 2, d.z + (d.ns ? 0 : d.open * (T - 0.05)));   // slides into the wall
+      else d.mesh.position.y = d.open * 3.05;
     }
+    this.updateLockRoom(); this.updateTome(dt); this.updatePrincess(dt);
+    if (this.bubbleT > 0) { this.bubbleT -= dt; if (this.bubbleT <= 0) hud.bubble(null); }
     for (const pr of this.props) { if (pr.lid) { const tgt = pr.opened ? -1.9 : 0; pr.lidA += (tgt - pr.lidA) * Math.min(1, dt * 8); pr.lid.rotation.x = pr.lidA; } if (pr.glint) pr.glint.material.opacity = 0.5 + Math.sin(this.t * 4 + pr.x) * 0.3; }
     for (const e of this.enemies) this.updateEnemy(e, dt);
     this.enemies = this.enemies.filter((e) => !e.gone);
@@ -673,13 +794,13 @@ export class Play {
       st.glow.material.opacity = open ? 0.55 + Math.sin(this.t * 3) * 0.2 : 0.12;
       if (Math.hypot(st.x - p.x, st.z - p.z) < 1.4) {
         if (open) { this.complete(); break; }
-        else if (!st.warned || this.t - st.warned > 4) { st.warned = this.t; hud.msg(this.L.goal === "dragon" ? "The stairwell is sealed — slay the Red Dragon first!" : "The stairwell is sealed — defeat every enemy first!", 3); sfx.deny(); }
+        else if (!st.warned || this.t - st.warned > 4) { st.warned = this.t; hud.msg(this.sealedText(), 3); sfx.deny(); }
       }
     }
     // hints
     this.L.hints.forEach((h, i) => { if (!this.hintsDone.has(i) && Math.floor(p.x / T) === h.c && Math.floor(p.z / T) === h.r) { this.hintsDone.add(i); hud.msg(h.text, 6); } });
     // boss bar + objective
-    const boss = this.enemies.find((e) => e.type === "dragon" && !e.dead && e.state !== "idle");
+    const boss = this.enemies.find((e) => e.d.boss && !e.dead && e.state !== "idle");
     hud.boss(boss ? boss.d.name : null, boss ? boss.hp / boss.d.hp : 0);
     this.objTimer = (this.objTimer || 0) - dt; if (this.objTimer <= 0) { this.objTimer = 0.5; hud.objective(this.objectiveText()); }
     // explored
@@ -687,13 +808,67 @@ export class Play {
     for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) { const c = ec + dc, r = er + dr; if (c >= 0 && r >= 0 && c < this.cols && r < this.rows && this.los(p.x, p.z, cx(c), cx(r))) this.explored[r * this.cols + c] = 1; }
     this.updateTorches(dt); this.updateViewmodel(dt); this.updateCamera(dt);
     const tgt = this.interactTarget();
-    hud.prompt(tgt ? (tgt.kind === "door" ? `E — ${tgt.o.target ? "Close" : "Open"} door` : `E — Search ${tgt.o.kind}`) : "");
+    hud.prompt(tgt ? (tgt.kind === "door" ? (tgt.o.secret && !tgt.o.found ? "" : tgt.o.locked ? "The door is sealed" : `E — ${tgt.o.target ? "Close" : "Open"} door`) : `E — Search ${tgt.o.kind}`) : "");
     hud.update(); hud.tick(dt); this.drawMinimap();
+  }
+  updateLockRoom() {
+    const lr = this.L.lockRoom; if (!lr) return;
+    const door = this.doorAt(lr.door[0], lr.door[1]); if (!door) return;
+    const [c0, r0, c1, r1] = lr.rect, inRect = (x, z) => { const c = Math.floor(x / T), r = Math.floor(z / T); return c >= c0 && c <= c1 && r >= r0 && r <= r1; };
+    if (!this.lockState && inRect(this.p.x, this.p.z) && Math.hypot(this.p.x - door.x, this.p.z - door.z) > 1.9) {
+      this.lockState = "sealed"; door.target = 0; door.locked = true; flashModel(door.mesh, 0.55); sfx.lock(); this.camShake = 0.3;
+      hud.msg("The door slams shut behind you! Defeat every foe in this hall to break the seal.", 5);
+    } else if (this.lockState === "sealed" && !this.enemies.some((e) => !e.dead && inRect(e.x, e.z))) {
+      this.lockState = "cleared"; door.locked = false; flashModel(door.mesh, 0); sfx.door();
+      hud.msg(this.enemies.some((e) => !e.dead) ? "The hall is silent — the seal on the door breaks." : "The hall is silent. The stairwells will open!", 4);
+    }
+  }
+  updateTome(dt) {
+    const tm = this.tome; if (!tm || this.hasTome) return;
+    tm.mesh.position.y = 1.0 + Math.sin(this.t * 2) * 0.1; tm.mesh.rotation.y += dt * 1.4; tm.glow.material.opacity = 0.55 + Math.sin(this.t * 3.5) * 0.2;
+    if (Math.hypot(tm.x - this.p.x, tm.z - this.p.z) < 1.5) {
+      this.hasTome = true; this.scene.remove(tm.mesh, tm.glow); sfx.found(); hud.flash("170,120,255", 0.4);
+      this.say("You", TOME.found[0], 6); hud.msg("You found the Tome of Horass! Return to the stairwell.", 5); hud.objective(this.objectiveText());
+    }
+  }
+  updatePrincess(dt) {
+    const pr = this.princess; if (!pr) return;
+    const p = this.p, dx = p.x - pr.x, dz = p.z - pr.z, dist = Math.hypot(dx, dz) || 0.001, P = pr.p, aim = (tx, tz, rate) => { const a = Math.atan2(tx, tz); let df = a - pr.yaw; df = Math.atan2(Math.sin(df), Math.cos(df)); pr.yaw += df * Math.min(1, rate * dt); };
+    let moved = 0;
+    if (!pr.found) {
+      if (dist < 10) aim(dx / dist, dz / dist, 3);
+      if (dist < 3.6 && this.los(pr.x, pr.z, p.x, p.z)) {
+        pr.found = true; sfx.found(); hud.flash("255,230,140", 0.35);
+        this.say("Elven Princess", PRINCESS.found[0], 7); hud.msg("You found the Elven Princess! She will follow you — now reach the stairwell!", 6); hud.objective(this.objectiveText());
+      }
+    } else {
+      if (dist > 2.3) {
+        let dir = [dx / dist, dz / dist];
+        if (!(dist < 9 && this.los(pr.x, pr.z, p.x, p.z))) dir = this.flowDir(pr) || dir;
+        this.openAhead({ x: pr.x, z: pr.z, d: { r: 0.4 } }, dir);
+        const sp = Math.min(6.4, moveSpeed() * (dist > 6 ? 1.2 : 0.92)), ox = pr.x, oz = pr.z;
+        this.moveEnt(pr, dir[0] * sp * dt, dir[1] * sp * dt, 0.4); moved = Math.hypot(pr.x - ox, pr.z - oz);
+        aim(dir[0], dir[1], 8);
+      } else aim(dx / dist, dz / dist, 5);
+      if (dist > 16) {                                             // lost her way: catch up behind the player
+        pr.tele += dt;
+        if (pr.tele > 3) { const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw); for (const k of [2, 1.2, 0.6, 0]) { const x = p.x - fx * k, z = p.z - fz * k; if (!this.blocked(x, z, 0.4)) { pr.x = x; pr.z = z; break; } } pr.tele = 0; }
+      } else pr.tele = 0;
+      pr.sayT -= dt;
+      if (pr.sayT <= 0 && dist < 6 && this.bubbleT <= 0) { pr.sayT = rand(28, 45); this.say("Elven Princess", PRINCESS.follow[Math.floor(Math.random() * PRINCESS.follow.length)], 4); }
+    }
+    pr.walk += moved * 2.6;
+    const w = Math.sin(pr.walk) * (moved > 0 ? 1 : 0), t = this.t;
+    pr.mesh.position.set(pr.x, 0, pr.z); pr.mesh.rotation.y = pr.yaw;
+    P.body.position.y = pr.found ? Math.abs(w) * 0.04 : Math.sin(t * 1.8) * 0.012;
+    P.arm_L.rotation.x = -w * 0.6 - 0.15; P.arm_R.rotation.x = w * 0.6 - 0.15; P.head.rotation.z = Math.sin(t * 1.1) * 0.04;
+    if (!pr.found) { P.arm_R.rotation.z = -0.12 - 0.5 * (Math.sin(t * 3) * 0.5 + 0.5); }                 // waves for help
   }
   updateEnemiesOnly(dt) { for (const e of this.enemies) { if (e.dead) this.updateEnemy(e, dt); } }
   updateAfter(dt) { this.t += dt; this.updateFx(dt); this.updateTorches(dt); this.updateViewmodel(dt); hud.tick(dt); }
   complete() {
     this.state = "complete"; sfx.stairs(); hud.prompt(""); hud.boss(null);
+    if (this.princess && this.princess.found) sayLine(PRINCESS.freed[0]);
     S.levelIdx = Math.max(S.levelIdx, this.idx + 1); save();
     this.onEnd("complete", { kills: this.kills, gold: S.gold - this.startGold });
   }
@@ -718,7 +893,13 @@ export class Play {
       if (!this.explored[r * this.cols + c]) continue;
       g.fillStyle = this.isWall(c, r) ? "#8a7a5a" : "#2a2418"; g.fillRect(c * s, r * s, s, s);
     }
-    for (const d of this.doors) if (this.explored[d.r * this.cols + d.c]) { g.fillStyle = d.target ? "#5a8a3a" : "#c8782a"; g.fillRect(d.c * s + 1, d.r * s + 1, s - 2, s - 2); }
+    for (const d of this.doors) if (this.explored[d.r * this.cols + d.c]) {
+      if (d.secret && !d.found) g.fillStyle = "#8a7a5a";                       // looks like wall until discovered
+      else g.fillStyle = d.locked ? "#ff3030" : d.target ? "#5a8a3a" : "#c8782a";
+      if (d.secret && !d.found) g.fillRect(d.c * s, d.r * s, s, s); else g.fillRect(d.c * s + 1, d.r * s + 1, s - 2, s - 2);
+    }
+    if (this.tome && !this.hasTome && this.explored[this.tome.r * this.cols + this.tome.c]) { g.fillStyle = "#b080ff"; g.fillRect(this.tome.c * s + 1, this.tome.r * s + 1, s - 2, s - 2); }
+    if (this.princess && (this.princess.found || this.explored[this.princess.r * this.cols + this.princess.c])) { g.fillStyle = "#ff8ad0"; g.beginPath(); g.arc(this.princess.x / T * s, this.princess.z / T * s, 3.5, 0, 7); g.fill(); }
     for (const st of this.stairs) if (this.explored[st.r * this.cols + st.c]) { g.fillStyle = "#ffe070"; g.fillRect(st.c * s, st.r * s, s, s); }
     g.fillStyle = "#ff4040";
     for (const e of this.enemies) if (!e.dead && e.los) g.fillRect(e.x / T * s - 2, e.z / T * s - 2, 4, 4);
@@ -732,6 +913,6 @@ export class Play {
   dispose() {
     camera.remove(this.vm); camera.remove(this.camLight); camera.rotation.z = 0;
     this.scene.traverse((o) => { o.geometry?.dispose?.(); });
-    hud.boss(null); hud.prompt("");
+    hud.boss(null); hud.prompt(""); hud.bubble(null); stopLine();
   }
 }
