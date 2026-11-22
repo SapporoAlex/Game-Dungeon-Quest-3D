@@ -383,7 +383,8 @@ export function generateLevels() {
     const goal = kind === "escape" ? "stairs" : kind;
     out.push({
       id: `gen${i + 1}`, title: kind === "finale" ? "Final Quest" : `Quest ${i + 5}`, subtitle: T.names[nameIdx % T.names.length], desc: T.desc, kind, goal, goalText: T.goalText,
-      theme: THEMES[themeKey], ...body,
+      theme: THEMES[themeKey], decoys: kind === "wizard" && nameIdx === 2,   // the third Dark Wizard quest: he conjures decoy copies
+      ...body,
     });
   });
   return out;

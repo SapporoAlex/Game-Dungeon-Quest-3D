@@ -21,6 +21,7 @@ const DEF = {
   skeleton: { model: "skeleton", name: "Skeleton", hp: 3, speed: 3.8, dmg: 1, reach: 1.95, cd: 0.7, wind: 0.24, r: 0.38, scale: 1.0, coins: [1, 3] },
   chaos: { model: "chaos", name: "Chaos Warrior", noKnock: true, hp: 8, speed: 3.2, dmg: 2, reach: 2.3, cd: 1.0, wind: 0.34, r: 0.6, scale: 1.0, coins: [2, 4] },
   dragon: { model: "dragon", name: "Red Dragon", noKnock: true, hp: 30, speed: 2.8, dmg: 3, reach: 3.3, cd: 1.2, wind: 0.45, r: 1.15, scale: 0.95, coins: [8, 12], boss: true },
+  decoy: { model: "wizard", name: "Dark Wizard", hp: 1, speed: 2.7, dmg: 0, reach: 0, cd: 3.1, wind: 0.95, r: 0.45, scale: 1.1, coins: [0, 0], ranged: { min: 6, max: 19 }, decoy: true },   // harmless copy conjured by the wizard on decoy levels
   wizard: { model: "wizard", name: "Dark Wizard", hp: 14, speed: 2.7, dmg: 2, reach: 0, cd: 3.1, wind: 0.95, r: 0.45, scale: 1.1, coins: [12, 18], boss: true, ranged: { min: 6, max: 19 } },
 };
 const DIRS = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };
@@ -228,8 +229,12 @@ export class Play {
   }
 
   addEnemy(type, x, z) {
-    const d = DEF[type];
-    const m = type === "archer" ? makeArcher() : type === "wizard" ? makeWizard() : inst(d.model); m.scale.setScalar(d.scale);
+    let d = DEF[type];
+    if (d.boss) {   // dragons and the dark wizard grow tougher and a bit quicker in later missions, keeping pace with the player's upgrades
+      const i = this.idx || 0;
+      d = { ...d, hp: Math.round(d.hp * (1 + 0.06 * i)), speed: d.speed * (1 + Math.min(0.25, 0.005 * i)) };
+    }
+    const m = type === "archer" ? makeArcher() : type === "wizard" || type === "decoy" ? makeWizard() : inst(d.model); m.scale.setScalar(d.scale);
     m.position.set(x, 0, z); this.scene.add(m);
     const pn = type === "dragon"
       ? ["body", "neck", "head", "jaw", "wing_L", "wing_R", "tail1", "tail2", "tail3", "leg_FL", "leg_FR", "leg_BL", "leg_BR"]
@@ -480,7 +485,9 @@ export class Play {
     if (e.hp <= 0) this.killEnemy(e);
   }
   killEnemy(e) {
+    if (e.type === "decoy") { this.vanish(e); return; }          // decoys die in one hit and leave nothing behind
     e.dead = true; e.deadT = 0; this.kills++; sfx.enemyDie();
+    if (e.type === "wizard") for (const o of this.enemies) if (o.type === "decoy" && !o.dead) this.vanish(o);   // the copies vanish with the wizard
     const [a, b] = e.d.coins;
     const loot = [["coin", irand(a, b)]];
     if (Math.random() < 0.28) loot.push(["mana", 1]);
@@ -494,6 +501,30 @@ export class Play {
     this.dropLoot(e.x, e.z, loot);
     this.burst(e.x, 1, e.z, 0xcccccc, 10, 2.5, 0.8, 0.1);
     hud.objective(this.objectiveText());
+  }
+  vanish(e) {
+    e.dead = true; e.gone = true; this.scene.remove(e.mesh);
+    this.burst(e.x, 1.2, e.z, 0xb890ff, 14, 3, 0.6, 0.07);
+  }
+  // decoy levels: an awake Dark Wizard periodically conjures harmless copies of himself
+  updateDecoys(dt) {
+    if (!this.L.decoys || this.state === "complete") return;
+    for (const w of this.enemies) {
+      if (w.type !== "wizard" || w.dead || w.state === "idle") continue;
+      w.decoyT = (w.decoyT ?? 3) - dt;
+      if (w.decoyT > 0) continue;
+      w.decoyT = rand(6, 9);
+      if (this.enemies.filter((o) => o.type === "decoy" && !o.dead).length >= 4) continue;
+      for (let k = 0; k < 8; k++) {
+        const a = rand(0, 6.28), r = rand(2, 4), x = w.x + Math.cos(a) * r, z = w.z + Math.sin(a) * r;
+        if (this.solid(Math.floor(x / T), Math.floor(z / T))) continue;
+        this.addEnemy("decoy", x, z);
+        const c = this.enemies[this.enemies.length - 1]; c.state = "chase"; c.atk = 1e9; c.yaw = w.yaw;   // never casts
+        this.burst(x, 1.2, z, 0xb890ff, 14, 3, 0.6, 0.07); sfx.secret();
+        if (!this.decoyMsg) { this.decoyMsg = true; hud.msg("The Dark Wizard splits into copies — only one is real!", 4); }
+        break;
+      }
+    }
   }
   wake(e) { if (e.state !== "idle") return; e.state = "chase"; if (e.type === "dragon") { sfx.roar(); this.aliveBoss = e; } if (e.type === "wizard") { this.aliveBoss = e; this.say("Dark Wizard", WIZARD.taunt[Math.floor(Math.random() * WIZARD.taunt.length)], 5); } }
 
@@ -692,7 +723,7 @@ export class Play {
       if (aiming || e.strike > 0) { P.arm_L.rotation.x = -1.45; P.arm_L.rotation.z = 0; P.arm_R.rotation.x = aiming ? -1.35 : -0.5; P.arm_R.rotation.z = aiming ? 0.35 : 0.1; P.body.rotation.x = 0; }
       else if (!idle) P.arm_L.rotation.x = -0.9;                                  // bow carried ready
     }
-    if (e.type === "wizard") {
+    if (e.type === "wizard" || e.type === "decoy") {
       const ud = m.userData, u = e.wind > 0 ? 1 - e.wind / e.d.wind : 0, pulse = u + (e.strike > 0 ? 1 : 0);
       if (ud.orb) { ud.orb.scale.setScalar(1 + pulse * 1.6 + Math.sin(t * 5) * 0.08); ud.orbLight.intensity = 1.4 + pulse * 4.5; }
       if (ud.eyeMat) ud.eyeMat.color.setRGB(0.22 + u * 0.6, 1, 0.36 + u * 0.4);
@@ -792,6 +823,7 @@ export class Play {
     for (const pr of this.props) { if (pr.lid) { const tgt = pr.opened ? -1.9 : 0; pr.lidA += (tgt - pr.lidA) * Math.min(1, dt * 8); pr.lid.rotation.x = pr.lidA; } if (pr.glint) pr.glint.material.opacity = 0.5 + Math.sin(this.t * 4 + pr.x) * 0.3; }
     for (const e of this.enemies) this.updateEnemy(e, dt);
     this.enemies = this.enemies.filter((e) => !e.gone);
+    this.updateDecoys(dt);
     for (const pl of this.plates) if (!pl.used && Math.hypot(pl.x - p.x, pl.z - p.z) < 0.9) { pl.used = true; this.trapArrows(); }
     this.updateShots(dt); this.updateItems(dt); this.updateFx(dt);
 

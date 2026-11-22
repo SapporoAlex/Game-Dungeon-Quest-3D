@@ -24,7 +24,7 @@ export function resetAll() { Object.assign(S, DEFAULTS); S.momo = readMomo(); ap
 
 export const moveSpeed = () => 5.0 + 0.55 * S.speedLvl;
 export const swordDmg = () => 1 + S.attackLvl;
-export const boltDmg = () => 2 + S.attackLvl;
+export const boltDmg = () => 3 * (2 + S.attackLvl);   // lightning hits 3x as hard
 export const BOLT_COST = 5;   // lightning is powerful: 5 magic per bolt
 
 export const SHOP_ITEMS = [
