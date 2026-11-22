@@ -16,7 +16,9 @@ for (const L of LEVELS) {
   if (L.goal === "tome" && (!L.tome || !seen.has(L.tome.join()))) errs.push("tome missing/unreachable");
   if (L.goal === "princess" && !(L.princessSpots?.length && L.princessSpots.every((s) => seen.has(s.join())))) errs.push("princess spots");
   if (L.goal === "wizard" && !L.enemies.some((e) => e.t === "wizard")) errs.push("no wizard");
-  if (L.goal === "dragon" && !L.enemies.some((e) => e.t === "dragon")) errs.push("no dragon");
+  if (L.goal === "dragon" && !L.enemies.some((e) => e.t === "dragon" || e.t === "slime")) errs.push("no dragon/slime");
+  // pillars must stand on open floor and never seal off the level
+  for (const [pc, pr] of L.pillars || []) if (L.map[pr][pc] !== ".") errs.push(`pillar on non-floor ${pc},${pr}`);
   if (L.goal === "finale") {
     if (L.enemies.filter((e) => e.t === "dragon").length !== 2 || L.enemies.filter((e) => e.t === "wizard").length !== 1) errs.push("finale needs 2 dragons + wizard");
     const lr = L.lockRoom, door = lr && L.doors.find((d) => d.c === lr.door[0] && d.r === lr.door[1] && !d.secret);

@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "../vendor/GLTFLoader.js";
 import { MUSIC, SHOP_MUSIC, SFX } from "./audio-config.js";
-import { dialogueFile } from "./dialogue.js";
+import { dialogueFile, narrationFile } from "./dialogue.js";
 import { dungeonTrack, elvenTrack } from "./music.js";
 export { THREE };
 
@@ -236,10 +236,13 @@ export function setShopMusic(on) { wantShop = on; syncMusic(); }
 // spoken dialogue: audio/dialogue-<text>.mp3 (silent placeholders until real recordings are dropped in)
 let voice;
 const VOICE_GAIN = 3;   // raise/lower to taste
-export function sayLine(text) {
+export function sayLine(text) { playVoice(dialogueFile(text)); }
+/** narrator (the on-screen "you have to…" hints): audio/nar-<text>.mp3 */
+export function narrate(text) { playVoice(narrationFile(text)); }
+function playVoice(file) {
   try {
     if (voice) voice.pause();
-    voice = new Audio(encodeURI(dialogueFile(text)).replace(/#/g, "%23"));
+    voice = new Audio(encodeURI(file).replace(/#/g, "%23"));
     voice.volume = 1;
     // HTMLAudio volume tops out at 1.0, so route through a gain node to make quiet recordings louder
     try { const g = AC.createGain(); g.gain.value = VOICE_GAIN; AC.createMediaElementSource(voice).connect(g).connect(AC.destination); } catch (e) {}

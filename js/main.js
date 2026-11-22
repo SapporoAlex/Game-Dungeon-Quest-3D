@@ -3,7 +3,7 @@
 // and when you reach camp. "Continue" always drops you at camp.
 import { renderer, camera, loadModels, endFrame, lock, requestLock, exitLock, resumeAudio, startMusic, pollGamepad, pad, IS_TOUCH } from "./engine.js";
 import { LEVELS } from "./levels.js";
-import { S, save, load, hasSave, resetAll, setMomo } from "./state.js";
+import { S, save, load, hasSave, resetAll, setMomo, moveSpeed, swordDmg, boltDmg } from "./state.js";
 import { hud } from "./hud.js";
 import { Play } from "./game.js";
 import { Shop } from "./shop.js";
@@ -25,7 +25,13 @@ const HELP = IS_TOUCH
 <div class="help"><b>🎮 Controller</b><span>Left stick move · Right stick look · RT / X sword · LT / B lightning · A use · Start pause · D-pad / A in menus</span></div>`;
 const fsBtn = document.fullscreenEnabled ? `<button class="btn small" data-act="fs">⛶ Fullscreen</button>` : "";
 const momoBtn = (small) => `<button class="btn ${small ? "small" : ""}" data-act="momo">🐾 Momo Mode: ${S.momo ? "ON" : "OFF"}${small ? "" : "<small>20 hearts · enemies attack 50% slower</small>"}</button>`;
-const disposeCur = () => { if (cur) { cur.dispose && cur.dispose(); cur = null; } };
+/** the player's upgrades, shown on the camp / quest-select screen and the pause menu */
+const statsPanel = () => {
+  const row = (icon, name, val) => `<span class="st"><i>${icon}</i><b>${val}</b><small>${name}</small></span>`;
+  return `<div class="statgrid">${row("🪙", "Gold", S.gold)}${row("♥", "Health", `${S.hp}/${S.maxHp}`)}${row("✦", "Magic", `${S.mana}/${S.maxMana}`)}${row("⚔", "Sword", swordDmg())}
+    ${row("⚡", "Lightning", boltDmg())}${row("👟", "Speed", `${moveSpeed().toFixed(1)} <em>(lv ${S.speedLvl}/5)</em>`)}${row("🔍", "Seeker", `lv ${S.luckLvl}/5`)}${row("📿", "Amulet", S.amulet ? "ready" : "none")}</div>`;
+};
+const disposeCur =() => { if (cur) { cur.dispose && cur.dispose(); cur = null; } };
 
 // ---------------------------------------------------------------- title
 const KIND = {
@@ -34,7 +40,10 @@ const KIND = {
 };
 /** one entry of the vertical quest list: a screenshot banner with the title; hover / focus extends it downwards to show the mission */
 function levelCard(i, state) {
-  const L = LEVELS[i], [icon, label] = KIND[L.kind] || ["⚔", "Quest"], locked = state === "locked";
+  const L = LEVELS[i], [icon0, kindLabel] = KIND[L.kind] || ["⚔", "Quest"], locked = state === "locked";
+  const useGoal = (L.kind === "tome" || L.boss === "slime") && L.goalText;
+  const label = useGoal ? L.goalText.replace(/\.$/, "") : kindLabel;
+  const icon = L.boss === "slime" ? "🟢" : icon0;
   const img = locked ? "" : thumbFor(L);
   const badge = state === "next" ? "NEXT" : state === "done" ? "✓ CLEARED" : locked ? "🔒 LOCKED" : "";
   return `<button class="lvl ${state}" data-act="play" data-arg="${i}" ${locked ? "disabled" : ""}>
@@ -71,7 +80,7 @@ function camp(note) {
   const next = S.levelIdx, allDone = next >= LEVELS.length;
   const cards = LEVELS.map((l, i) => levelCard(i, i < next ? "done" : i === next ? "next" : "locked")).join("");
   show(`<div id="campWrap"><div id="campSide"><h2>Camp</h2>${note ? `<p class="note">${note}</p>` : ""}
-    <p class="stats">🪙 <b>${S.gold}</b> gold &nbsp; 📿 <b>${S.amulet ? "Rebirth amulet ready" : "no amulet"}</b> &nbsp; ♥ <b>${S.maxHp}</b> health &nbsp; ⚡ <b>${S.mana}/${S.maxMana}</b> magic &nbsp; ⚔ <b>${1 + S.attackLvl}</b> power</p>
+    ${statsPanel()}
     ${allDone ? "<p>🏆 You have conquered every quest in the dungeon!</p>" : ""}
     <div class="menu row"><button class="btn" data-act="shop">Lirael's Shop</button><button class="btn" data-act="title">Main Menu</button>${momoBtn(true)}</div></div>
     <div id="campMain"><div class="rule"><i></i><span>Choose a quest</span><i></i></div>
@@ -111,7 +120,7 @@ function onEnd(kind, info) {
 // pause: mouse released (desktop), Start button (gamepad) or the pause button (touch)
 function showPause() {
   paused = true;
-  show(`<h2>Paused</h2><div class="rule"><i></i></div><div class="menu"><button class="btn" data-act="resume">Resume</button><button class="btn" data-act="title">Main Menu</button></div>${HELP}`,
+  show(`<h2>Paused</h2><div class="rule"><i></i></div>${mode === "play" ? statsPanel() : ""}<div class="menu"><button class="btn" data-act="resume">Resume</button><button class="btn" data-act="title">Main Menu</button></div>${HELP}`,
     { resume: () => { paused = false; hide(); requestLock(); }, title: () => { if (mode === "play" && cur && cur.restoreSnapshot) cur.restoreSnapshot(); title(); } });
 }
 const canPause = () => (mode === "play" || mode === "shop") && cur && cur.state !== "dead" && cur.state !== "complete";

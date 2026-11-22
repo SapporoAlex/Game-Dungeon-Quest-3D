@@ -1,9 +1,9 @@
 // Level gameplay: first-person dungeon crawl (walls, doors, enemies, items, spells).
 import {
-  THREE, T, WALL_H, camera, TEX, inst, parts, flashModel, glowSprite, keys, mouse, pressed, lock, sfx, moveInput, rumble, sayLine, stopLine,
+  THREE, T, WALL_H, camera, TEX, inst, parts, flashModel, glowSprite, keys, mouse, pressed, lock, sfx, moveInput, rumble, sayLine, narrate, stopLine,
 } from "./engine.js";
-import { makeArcher, makeWizard, makePrincess, makeTome, makeBookshelf, makeRug } from "./models-extra.js";
-import { PRINCESS, WIZARD, TOME } from "./dialogue.js";
+import { makeArcher, makeWizard, makeSlime, makeCrimson, makePrincess, makeTome, makeBookshelf, makeRug } from "./models-extra.js";
+import { PRINCESS, WIZARD, TOME, BOOKS } from "./dialogue.js";
 import { LEVELS } from "./levels.js";
 import { S, save, moveSpeed, swordDmg, boltDmg, BOLT_COST } from "./state.js";
 import { hud } from "./hud.js";
@@ -20,11 +20,14 @@ const DEF = {
   archer: { model: "goblin", name: "Goblin Archer", hp: 1, speed: 4.0, dmg: 1, reach: 0, cd: 1.5, wind: 0.48, r: 0.4, scale: 1.1, coins: [1, 3], ranged: { min: 4.5, max: 16, arrow: 12.5 } },
   skeleton: { model: "skeleton", name: "Skeleton", hp: 3, speed: 3.8, dmg: 1, reach: 1.95, cd: 0.7, wind: 0.24, r: 0.38, scale: 1.0, coins: [1, 3] },
   chaos: { model: "chaos", name: "Chaos Warrior", noKnock: true, hp: 8, speed: 3.2, dmg: 2, reach: 2.3, cd: 1.0, wind: 0.34, r: 0.6, scale: 1.0, coins: [2, 4] },
+  crimson: { model: "chaos", name: "Crimson Warrior", noKnock: true, hp: 18, speed: 3.5, dmg: 3, reach: 2.4, cd: 0.9, wind: 0.32, r: 0.65, scale: 1.12, coins: [5, 8] },   // red chaos warrior with golden horns: tougher, hits harder
+  slime: { model: "slime", name: "Giant Slime", noKnock: true, hp: 26, speed: 2.3, dmg: 1, reach: 0, cd: 2.0, wind: 0.55, r: 1.0, scale: 1.45, coins: [8, 12], boss: true, ranged: { min: 4, max: 15, arrow: 9.5, goo: true } },   // spits goo that slows you
   dragon: { model: "dragon", name: "Red Dragon", noKnock: true, hp: 30, speed: 2.8, dmg: 3, reach: 3.3, cd: 1.2, wind: 0.45, r: 1.15, scale: 0.95, coins: [8, 12], boss: true },
   decoy: { model: "wizard", name: "Dark Wizard", hp: 1, speed: 2.7, dmg: 0, reach: 0, cd: 3.1, wind: 0.95, r: 0.45, scale: 1.1, coins: [0, 0], ranged: { min: 6, max: 19 }, decoy: true },   // harmless copy conjured by the wizard on decoy levels
   wizard: { model: "wizard", name: "Dark Wizard", hp: 14, speed: 2.7, dmg: 2, reach: 0, cd: 3.1, wind: 0.95, r: 0.45, scale: 1.1, coins: [12, 18], boss: true, ranged: { min: 6, max: 19 } },
 };
 const DIRS = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };
+const TALL_H = WALL_H * 2;   // ceiling height of the big pillared halls
 const LORE_QUIET = 14;
 const rand = (a, b) => a + Math.random() * (b - a);
 const irand = (a, b) => Math.floor(rand(a, b + 1));
@@ -35,13 +38,16 @@ export class Play {
     this.onEnd = onEnd;
     this.idx = levelIdx;
     const L = (this.L = LEVELS[levelIdx]);
+    this.bookName = BOOKS[L.book || 0].name;
+    this.bossLabel = L.boss === "slime" ? "Giant Slime" : "Red Dragon";
     this.theme = L.theme || THEMES[L.id] || THEMES.quest1;
     this.rows = L.map.length; this.cols = L.map[0].length;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(this.theme.fog);
     this.scene.fog = new THREE.FogExp2(this.theme.fog, 0.058);
     this.t = 0; this.state = "play"; this.kills = 0; this.noise = 0;
-    this.doors = []; this.props = []; this.enemies = []; this.items = []; this.shots = []; this.fx = []; this.plates = [];
+    this.doors = []; this.props = []; this.enemies = []; this.items = []; this.shots = []; this.fx = []; this.plates = []; this.hazards = [];
+    this.pillarAt = new Map();                                    // cell index -> [x, z] of the pillar standing in it
     this.torches = []; this.stairs = []; this.hintsDone = new Set();
     this.hasTome = false; this.tome = null; this.princess = null; this.lockState = null; this.bubbleT = 0; this.ambushT = 0; this.ambushMsg = ""; this.ambushed = false;
     this.startGold = S.gold; this.startAmulet = S.amulet; this.startMana = S.mana;
@@ -68,7 +74,7 @@ export class Play {
     this.aliveBoss = null;
     hud.minimap.style.display = "block"; hud.show(true); hud.title(`${L.title} — ${L.subtitle}`, this.objectiveText()); hud.boss(null);
     hud.msg(L.hints[0] ? L.hints[0].text : L.subtitle, 7);
-    if (L.hints[0]) this.hintsDone.add(0);
+    if (L.hints[0]) { this.hintsDone.add(0); narrate(L.hints[0].text); }
     this.camShake = 0;
   }
 
@@ -76,9 +82,9 @@ export class Play {
   objectiveText() {
     const g = this.L.goal, alive = this.enemies.filter((e) => !e.dead).length;
     if (g === "stairs") return this.L.kind === "escape" ? "Escape! Find the stairwell and descend." : "Find the stairwell and descend.";
-    if (g === "dragon") return this.dragonDead() ? "The dragon is dead — return to the stairwell!" : "Slay the Red Dragon, then take the stairwell.";
+    if (g === "dragon") return this.dragonDead() ? `The ${this.bossLabel.toLowerCase()} is dead — return to the stairwell!` : `Slay the ${this.bossLabel}, then take the stairwell.`;
     if (g === "wizard") return this.wizardDead() ? "The Dark Wizard is dead — return to the stairwell!" : "Defeat the Dark Wizard (watch out for lightning!), then take the stairwell.";
-    if (g === "tome") return this.hasTome ? "You have the Tome of Horass — return to the stairwell where you began!" : "Search the labyrinth for the Tome of Horass.";
+    if (g === "tome") return this.hasTome ? `You have the ${this.bookName} — return to the stairwell where you began!` : `Search the labyrinth for the ${this.bookName}.`;
     if (g === "finale") {
       if (!this.bossesDead()) return `Final battle: slay the 2 dragons and the Dark Wizard (${this.enemies.filter((e) => (e.type === "dragon" || e.type === "wizard") && !e.dead).length} left).`;
       return this.princess && this.princess.found ? "Fight your way back to the stairwell!" : "Free the Elven Princess!";
@@ -86,7 +92,7 @@ export class Play {
     if (g === "princess") return this.princess && this.princess.found ? "The Elven Princess is following you — reach the stairwell!" : "Find the Elven Princess, hidden in a room far from here.";
     return alive ? `Defeat every enemy (${alive} left).` : "All foes defeated — take a stairwell!";
   }
-  dragonDead() { return !this.enemies.some((e) => e.type === "dragon" && !e.dead); }
+  dragonDead() { return !this.enemies.some((e) => (e.type === "dragon" || e.type === "slime") && !e.dead); }
   bossesDead() { return !this.enemies.some((e) => (e.type === "dragon" || e.type === "wizard") && !e.dead); }
   wizardDead() { return !this.enemies.some((e) => e.type === "wizard" && !e.dead); }
   stairsOpen() {
@@ -95,7 +101,7 @@ export class Play {
       || (g === "princess" && !!this.princess && this.princess.found) || (g === "finale" && this.bossesDead() && !!this.princess && this.princess.found) || (g === "clear" && !this.enemies.some((e) => !e.dead));
   }
   sealedText() {
-    return { dragon: "The stairwell is sealed — slay the Red Dragon first!", wizard: "The stairwell is sealed — defeat the Dark Wizard first!", tome: "The stairwell is sealed — find the Tome of Horass first!",
+    return { dragon: `The stairwell is sealed — slay the ${this.bossLabel} first!`, wizard: "The stairwell is sealed — defeat the Dark Wizard first!", tome: `The stairwell is sealed — find the ${this.bookName} first!`,
       princess: "The stairwell is sealed — find the Elven Princess first!", finale: "The stairwell is sealed — win the final battle and free the princess first!" }[this.L.goal] || "The stairwell is sealed — defeat every enemy first!";
   }
   say(who, text, sec = 6) { hud.bubble(`<b>${who}:</b> ${text}`); sayLine(text); this.bubbleT = sec; }
@@ -104,7 +110,12 @@ export class Play {
   ch(c, r) { return this.L.map[r]?.[c]; }
   isWall(c, r) { return c < 0 || r < 0 || c >= this.cols || r >= this.rows || this.L.map[r][c] === "#"; }
   doorAt(c, r) { return this.doors.find((d) => d.c === c && d.r === r); }
-  flowWall(c, r) { if (this.isWall(c, r)) return true; const d = this.doorAt(c, r); return !!d && (d.locked || (d.secret && d.target === 0)); }
+  /** is (x, z) inside a pillar? (pillars are round columns in the middle of a tile) */
+  inPillar(x, z, pad = 0) {
+    const p = this.pillarAt.get(Math.floor(z / T) * this.cols + Math.floor(x / T));
+    return !!p && (x - p[0]) ** 2 + (z - p[1]) ** 2 < (0.75 + pad) ** 2;
+  }
+  flowWall(c, r) { if (this.isWall(c, r) || this.pillarAt.has(r * this.cols + c)) return true; const d = this.doorAt(c, r); return !!d && (d.locked || (d.secret && d.target === 0)); }
   solid(c, r) { if (this.isWall(c, r)) return true; const d = this.doorAt(c, r); return !!d && d.open < 0.85; }
 
   buildLevel() {
@@ -117,14 +128,23 @@ export class Play {
       const v = rand(0.82, 1); for (let i = 0; i < 6; i++) col.push(v, v, v);
     };
     const torchFaces = [];
+    // ceiling height per tile: ordinary rooms and corridors are WALL_H, the big "hall" rooms are twice as tall
+    const hmap = new Float32Array(this.cols * this.rows).fill(WALL_H); this.hmap = hmap;
+    for (const t of L.tall || []) for (let r = t.r; r < t.r + t.h; r++) for (let c = t.c; c < t.c + t.w; c++) if (r >= 0 && c >= 0 && r < this.rows && c < this.cols) hmap[r * this.cols + c] = TALL_H;
     for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) {
       if (this.isWall(c, r)) continue;
-      const x0 = c * T, x1 = x0 + T, z0 = r * T, z1 = z0 + T, h = WALL_H, vv = h / T;
+      const x0 = c * T, x1 = x0 + T, z0 = r * T, z1 = z0 + T, h = hmap[r * this.cols + c], vv = h / T;
       // wall on each side that is solid (faces point into this cell)
       if (this.isWall(c, r - 1)) { quad([x1, 0, z0], [x0, 0, z0], [x0, h, z0], [x1, h, z0], [0, 0, 1], 1, vv); torchFaces.push([c, r, 0, 1]); }
       if (this.isWall(c, r + 1)) { quad([x0, 0, z1], [x1, 0, z1], [x1, h, z1], [x0, h, z1], [0, 0, -1], 1, vv); torchFaces.push([c, r, 0, -1]); }
       if (this.isWall(c - 1, r)) { quad([x0, 0, z0], [x0, 0, z1], [x0, h, z1], [x0, h, z0], [1, 0, 0], 1, vv); torchFaces.push([c, r, 1, 0]); }
       if (this.isWall(c + 1, r)) { quad([x1, 0, z1], [x1, 0, z0], [x1, h, z0], [x1, h, z1], [-1, 0, 0], 1, vv); torchFaces.push([c, r, -1, 0]); }
+      // a tall hall opening onto a lower corridor: wall in the gap above the low ceiling
+      const lo = (nc, nr) => (this.isWall(nc, nr) ? h : hmap[nr * this.cols + nc]);
+      if (lo(c, r - 1) < h) quad([x1, lo(c, r - 1), z0], [x0, lo(c, r - 1), z0], [x0, h, z0], [x1, h, z0], [0, 0, 1], 1, (h - lo(c, r - 1)) / T);
+      if (lo(c, r + 1) < h) quad([x0, lo(c, r + 1), z1], [x1, lo(c, r + 1), z1], [x1, h, z1], [x0, h, z1], [0, 0, -1], 1, (h - lo(c, r + 1)) / T);
+      if (lo(c - 1, r) < h) quad([x0, lo(c - 1, r), z0], [x0, lo(c - 1, r), z1], [x0, h, z1], [x0, h, z0], [1, 0, 0], 1, (h - lo(c - 1, r)) / T);
+      if (lo(c + 1, r) < h) quad([x1, lo(c + 1, r), z1], [x1, lo(c + 1, r), z0], [x1, h, z0], [x1, h, z1], [-1, 0, 0], 1, (h - lo(c + 1, r)) / T);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
@@ -136,9 +156,30 @@ export class Play {
     const floorT = TEX.floor.clone(); floorT.repeat.set(this.cols * 2, this.rows * 2); floorT.needsUpdate = true;
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshLambertMaterial({ map: floorT, color: theme.floor }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(W / 2, 0, D / 2); this.scene.add(floor);
-    const ceilT = TEX.ceil.clone(); ceilT.repeat.set(this.cols * 2, this.rows * 2); ceilT.needsUpdate = true;
-    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshLambertMaterial({ map: ceilT, color: 0x907868 }));
-    ceil.rotation.x = Math.PI / 2; ceil.position.set(W / 2, WALL_H, D / 2); this.scene.add(ceil);
+    // ceiling: one quad per open tile, at that tile's own height (so tall halls have a high roof)
+    const cp = [], cn = [], cu = [];
+    for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) {
+      if (this.isWall(c, r)) continue;
+      const x0 = c * T, x1 = x0 + T, z0 = r * T, z1 = z0 + T, y = hmap[r * this.cols + c];
+      cp.push(x0, y, z0, x1, y, z1, x0, y, z1, x0, y, z0, x1, y, z0, x1, y, z1);
+      for (let i = 0; i < 6; i++) cn.push(0, -1, 0);
+      cu.push(0, 0, 2, 2, 0, 2, 0, 0, 2, 0, 2, 2);
+    }
+    const cg = new THREE.BufferGeometry();
+    cg.setAttribute("position", new THREE.Float32BufferAttribute(cp, 3)); cg.setAttribute("normal", new THREE.Float32BufferAttribute(cn, 3)); cg.setAttribute("uv", new THREE.Float32BufferAttribute(cu, 2));
+    this.scene.add(new THREE.Mesh(cg, new THREE.MeshLambertMaterial({ map: TEX.ceil, color: 0x907868, side: THREE.DoubleSide })));
+    // pillars in the tall halls: round stone columns that block movement, sight and missiles (cover!)
+    const pillarTex = TEX.wall.clone(); pillarTex.repeat.set(1, 2); pillarTex.needsUpdate = true;
+    const pillarMat = new THREE.MeshLambertMaterial({ map: pillarTex, color: new THREE.Color(theme.wall).multiplyScalar(0.92) });
+    for (const [pc, pr] of L.pillars || []) {
+      if (this.isWall(pc, pr)) continue;
+      const px = cx(pc), pz = cx(pr), ph = hmap[pr * this.cols + pc], g2 = new THREE.Group();
+      g2.add(new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.66, ph, 16), pillarMat).translateY(ph / 2));
+      g2.add(new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.35, 1.6), pillarMat).translateY(0.175));
+      g2.add(new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.4, 1.45), pillarMat).translateY(ph - 0.2));
+      g2.position.set(px, 0, pz); this.scene.add(g2);
+      this.pillarAt.set(pr * this.cols + pc, [px, pz]);
+    }
 
     // torches on a deterministic sprinkling of wall faces
     for (const [c, r, nx, nz] of torchFaces) {
@@ -173,10 +214,10 @@ export class Play {
       this.stairs.push({ x: cx(c), z: cx(r), mesh: m, glow, c, r });
     }
     // plates
-    for (const [c, r] of L.plates) {
-      if (this.isWall(c, r)) continue;
+    for (const [c, r, type] of L.plates) {                     // type: "arrow" (default) · "fire" · "alarm" — all look like the same hidden plate
+      if (this.isWall(c, r) || this.pillarAt.has(r * this.cols + c)) continue;
       const m = inst("plate"); m.position.set(cx(c), 0.01, cx(r)); this.scene.add(m);
-      this.plates.push({ x: cx(c), z: cx(r), used: false, mesh: m });
+      this.plates.push({ x: cx(c), z: cx(r), used: false, mesh: m, type: type || "arrow" });
     }
     // persian rugs
     for (const rg of L.rugs || []) {
@@ -234,13 +275,14 @@ export class Play {
       const i = this.idx || 0;
       d = { ...d, hp: Math.round(d.hp * (1 + 0.06 * i)), speed: d.speed * (1 + Math.min(0.25, 0.005 * i)) };
     }
-    const m = type === "archer" ? makeArcher() : type === "wizard" || type === "decoy" ? makeWizard() : inst(d.model); m.scale.setScalar(d.scale);
+    const m = type === "archer" ? makeArcher() : type === "wizard" || type === "decoy" ? makeWizard() : type === "slime" ? makeSlime() : type === "crimson" ? makeCrimson() : inst(d.model); m.scale.setScalar(d.scale);
     m.position.set(x, 0, z); this.scene.add(m);
     const pn = type === "dragon"
       ? ["body", "neck", "head", "jaw", "wing_L", "wing_R", "tail1", "tail2", "tail3", "leg_FL", "leg_FR", "leg_BL", "leg_BR"]
       : ["body", "head", "arm_L", "arm_R", "leg_L", "leg_R"];
     const e = { type, d: this.atkMul === 1 ? d : { ...d, cd: d.cd * this.atkMul, wind: d.wind * this.atkMul }, x, z, yaw: rand(0, 6.28), hp: d.hp, mesh: m, p: parts(m, pn), state: "idle", atk: rand(0.2, d.cd), wind: 0, stagger: 0,
       kx: 0, kz: 0, flash: 0, dead: false, deadT: 0, walk: rand(0, 6), senseT: Math.random() * 0.3, los: false, fireCd: rand(1, 3), biting: 0, stuck: 0, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: rand(1, 3), stuckT: 0 };
+    if (this.L.id === "tutorial") e.noDoors = true;
     this.enemies.push(e);
     return e;
   }
@@ -252,6 +294,10 @@ export class Play {
       if (!this.solid(cc, rr)) continue;
       const nx = Math.max(cc * T, Math.min(x, (cc + 1) * T)), nz = Math.max(rr * T, Math.min(z, (rr + 1) * T));
       if ((x - nx) ** 2 + (z - nz) ** 2 < r * r) return true;
+    }
+    if (this.pillarAt.size) for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) {
+      const pl = this.pillarAt.get(rr * this.cols + cc);
+      if (pl && (x - pl[0]) ** 2 + (z - pl[1]) ** 2 < (r + 0.75) ** 2) return true;
     }
     for (const p of this.props) {
       if (p.kind !== "table" && p.broken) continue;
@@ -266,7 +312,10 @@ export class Play {
   }
   los(x0, z0, x1, z1) {
     const dx = x1 - x0, dz = z1 - z0, n = Math.ceil(Math.hypot(dx, dz) / 0.35);
-    for (let i = 1; i < n; i++) if (this.solid(Math.floor((x0 + dx * i / n) / T), Math.floor((z0 + dz * i / n) / T))) return false;
+    for (let i = 1; i < n; i++) {
+      const x = x0 + dx * i / n, z = z0 + dz * i / n;
+      if (this.solid(Math.floor(x / T), Math.floor(z / T)) || this.inPillar(x, z)) return false;
+    }
     return true;
   }
   losWide(e, r) {
@@ -274,7 +323,7 @@ export class Play {
     return this.los(e.x, e.z, this.p.x, this.p.z) && this.los(e.x + nx, e.z + nz, this.p.x + nx, this.p.z + nz) && this.los(e.x - nx, e.z - nz, this.p.x - nx, this.p.z - nz);
   }
   rayLen(x, z, dx, dz, max) {
-    for (let t = 0; t < max; t += 0.2) if (this.solid(Math.floor((x + dx * t) / T), Math.floor((z + dz * t) / T))) return t;
+    for (let t = 0; t < max; t += 0.2) if (this.solid(Math.floor((x + dx * t) / T), Math.floor((z + dz * t) / T)) || this.inPillar(x + dx * t, z + dz * t)) return t;
     return max;
   }
 
@@ -492,7 +541,10 @@ export class Play {
     const loot = [["coin", irand(a, b)]];
     if (Math.random() < 0.28) loot.push(["mana", 1]);
     if (Math.random() < 0.22) loot.push(["health", 1]);
-    if (e.type === "dragon") { loot.push(["health", 2], ["mana", 2]); hud.boss(null); hud.msg("The Red Dragon has fallen!", 5); }
+    if (e.type === "dragon" || e.type === "slime") {
+      loot.push(["health", 2], ["mana", 2]); hud.boss(null); hud.msg(e.type === "slime" ? "The Giant Slime has burst!" : "The Red Dragon has fallen!", 5);
+      if (this.L.goal === "dragon" && this.dragonDead()) this.queueAmbush(e.type === "slime" ? "The slime's death-cry echoes — creatures swarm from the dark! Fight your way back to the stairwell!" : "The dragon's death-roar echoes — creatures swarm from the dark! Fight your way back to the stairwell!");
+    }
     if (e.type === "wizard") {
       loot.push(["health", 2], ["mana", 3]); hud.boss(null); hud.msg("The Dark Wizard has fallen!", 5);
       if (this.L.goal === "wizard") this.queueAmbush("The wizard's spell breaks — his minions surge from the shadows! Fight your way back to the stairwell!"); this.say("Dark Wizard", WIZARD.dying[0], 4);
@@ -526,7 +578,7 @@ export class Play {
       }
     }
   }
-  wake(e) { if (e.state !== "idle") return; e.state = "chase"; if (e.type === "dragon") { sfx.roar(); this.aliveBoss = e; } if (e.type === "wizard") { this.aliveBoss = e; this.say("Dark Wizard", WIZARD.taunt[Math.floor(Math.random() * WIZARD.taunt.length)], 5); } }
+  wake(e) { if (e.state !== "idle") return; e.state = "chase"; if (e.type === "dragon" || e.type === "slime") { sfx.roar(); this.aliveBoss = e; } if (e.type === "wizard") { this.aliveBoss = e; this.say("Dark Wizard", WIZARD.taunt[Math.floor(Math.random() * WIZARD.taunt.length)], 5); } }
 
   swordAttack() {
     const p = this.p; p.swing = 0.32; p.cd = 0.4; p.swingHit = false; sfx.swing(); this.noise = 0.5;
@@ -643,6 +695,7 @@ export class Play {
     e.walk += Math.hypot(e.x - ox, e.z - oz) * 2.4 / (e.type === "dragon" ? 1.5 : 1);
   }
   openAhead(e, dir) {
+    if (e.noDoors) return;                                  // the tutorial goblin can't open doors
     const dd = this.doorAt(Math.floor((e.x + dir[0] * (e.d.r + 0.8)) / T), Math.floor((e.z + dir[1] * (e.d.r + 0.8)) / T));
     if (dd && dd.target === 0 && !dd.secret && !dd.locked) { dd.target = 1; sfx.door(); }
   }
@@ -652,7 +705,7 @@ export class Play {
     e.strafeT -= dt; if (e.strafeT <= 0) { e.strafeT = rand(1.2, 3); e.strafe = Math.random() < 0.5 ? 1 : -1; }
     if (e.wind > 0) {
       face(nx, nz, 14); e.wind -= dt;
-      if (e.wind <= 0) { e.atk = d.cd * rand(0.9, 1.35); if (isW) this.wizardCast(e); else this.shootArrow(e); }
+      if (e.wind <= 0) { e.atk = d.cd * rand(0.9, 1.35); if (isW) this.wizardCast(e); else if (rg.goo) this.shootGoo(e); else this.shootArrow(e); }
       return;
     }
     if (e.los && dist < rg.max && dist > 0.6 && e.atk <= 0) { e.wind = d.wind; face(nx, nz, 14); return; }
@@ -674,6 +727,15 @@ export class Play {
     const moved = Math.hypot(e.x - ox, e.z - oz);
     if (moved < sp * dt * 0.25) { e.stuckT += dt; if (e.stuckT > 0.4) { e.strafe = -e.strafe; e.strafeT = rand(1, 2); e.stuckT = 0; } } else e.stuckT = 0;
     e.walk += moved * 2.4;
+  }
+  // the giant slime spits a ball of goo; if it hits you, you are slowed for 1-2 seconds (see updateShots)
+  shootGoo(e) {
+    sfx.drink(); e.strike = 0.3;
+    const dx = this.p.x - e.x, dz = this.p.z - e.z, a = Math.atan2(dx, dz) + rand(-0.04, 0.04), vx = Math.sin(a), vz = Math.cos(a), sp = e.d.ranged.arrow;
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), new THREE.MeshLambertMaterial({ color: 0x5ae05a, emissive: 0x1a6a1a, transparent: true, opacity: 0.9 }));
+    m.add(glowSprite(0x6aff6a, 1.1, 0.6));
+    m.position.set(e.x + vx * 1.4, 1.3, e.z + vz * 1.4); this.scene.add(m);
+    this.shots.push({ kind: "goo", m, x: m.position.x, z: m.position.z, vx: vx * sp, vz: vz * sp, dmg: e.d.dmg, life: 3 });
   }
   shootArrow(e) {
     sfx.bow(); e.strike = 0.25;
@@ -723,6 +785,10 @@ export class Play {
       if (aiming || e.strike > 0) { P.arm_L.rotation.x = -1.45; P.arm_L.rotation.z = 0; P.arm_R.rotation.x = aiming ? -1.35 : -0.5; P.arm_R.rotation.z = aiming ? 0.35 : 0.1; P.body.rotation.x = 0; }
       else if (!idle) P.arm_L.rotation.x = -0.9;                                  // bow carried ready
     }
+    if (e.type === "slime") {                                                       // wobbles; swells before spitting
+      const u = e.wind > 0 ? 1 - e.wind / e.d.wind : 0, sq = Math.sin(t * 3.2 + e.walk) * 0.07 + (e.strike > 0 ? -0.12 : 0);
+      P.body.scale.set(1 + sq + u * 0.22, 1 - sq - u * 0.18, 1 + sq + u * 0.22); P.body.rotation.x = 0; P.body.position.y = 0;
+    }
     if (e.type === "wizard" || e.type === "decoy") {
       const ud = m.userData, u = e.wind > 0 ? 1 - e.wind / e.d.wind : 0, pulse = u + (e.strike > 0 ? 1 : 0);
       if (ud.orb) { ud.orb.scale.setScalar(1 + pulse * 1.6 + Math.sin(t * 5) * 0.08); ud.orbLight.intensity = 1.4 + pulse * 4.5; }
@@ -737,6 +803,28 @@ export class Play {
     const g = glowSprite(0xff6a10, 1.6, 0.9); m.add(g);
     m.position.set(e.x + dx / l * 1.8, 1.7, e.z + dz / l * 1.8); this.scene.add(m);
     this.shots.push({ kind: "fire", m, x: m.position.x, z: m.position.z, vx: dx / l * 9, vz: dz / l * 9, dmg: 2, life: 4 });
+  }
+  springTrap(pl) {
+    if (pl.type === "fire") {                                   // flames: a short warning, then a blast around the plate — run!
+      sfx.lock(); hud.msg("Click! The floor glows — flames are about to erupt. RUN!", 2.5);
+      const glow = glowSprite(0xff6a10, 4.2, 0.8); glow.position.set(pl.x, 0.5, pl.z); this.scene.add(glow);
+      this.hazards.push({ kind: "fire", x: pl.x, z: pl.z, t: 0.9, glow });
+    } else if (pl.type === "alarm") {                           // a hidden gong wakes everything nearby
+      sfx.lock(); this.camShake = 0.25; this.noise = 1; hud.msg("A hidden gong crashes — the dungeon wakes!", 3);
+      this.computeFlow();
+      for (const e of this.enemies) if (!e.dead && e.state === "idle") { const f = this.flow[Math.floor(e.z / T) * this.cols + Math.floor(e.x / T)]; if (f >= 0 && f < 40) this.wake(e); }
+    } else this.trapArrows();
+  }
+  updateHazards(dt) {
+    for (let i = this.hazards.length - 1; i >= 0; i--) {
+      const h = this.hazards[i]; h.t -= dt;
+      h.glow.material.opacity = 0.35 + (1 - Math.max(0, h.t) / 0.9) * 0.6; h.glow.scale.setScalar(3 + Math.sin(this.t * 30) * 0.3);
+      if (h.t > 0) continue;
+      this.scene.remove(h.glow); this.hazards.splice(i, 1);
+      sfx.fire(); this.camShake = Math.max(this.camShake, 0.25);
+      this.burst(h.x, 0.6, h.z, 0xff8a20, 34, 5, 0.7, 0.12); this.burst(h.x, 0.6, h.z, 0xffd060, 18, 3.5, 0.6, 0.08);
+      if (Math.hypot(this.p.x - h.x, this.p.z - h.z) < 2.4) { hud.flash("255,120,30", 0.5); this.hurtPlayer(2, h.x, h.z); }
+    }
   }
   trapArrows() {
     sfx.arrow(); hud.msg("Click! A pressure plate — arrows fly from the walls!", 3);
@@ -754,9 +842,12 @@ export class Play {
   updateShots(dt) {
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const s = this.shots[i]; s.life -= dt; s.x += s.vx * dt; s.z += s.vz * dt; s.m.position.x = s.x; s.m.position.z = s.z;
-      let dead = s.life <= 0 || this.solid(Math.floor(s.x / T), Math.floor(s.z / T));
-      if (!dead && Math.hypot(s.x - this.p.x, s.z - this.p.z) < 0.55) { this.hurtPlayer(s.dmg, s.x, s.z); dead = true; if (s.kind === "fire") this.burst(s.x, 1.4, s.z, 0xff8a20, 12, 3.5, 0.5, 0.09); }
-      if (dead) { this.scene.remove(s.m); this.shots.splice(i, 1); }
+      let dead = s.life <= 0 || this.solid(Math.floor(s.x / T), Math.floor(s.z / T)) || this.inPillar(s.x, s.z);
+      if (!dead && Math.hypot(s.x - this.p.x, s.z - this.p.z) < (s.kind === "goo" ? 0.75 : 0.55)) {
+        this.hurtPlayer(s.dmg, s.x, s.z); dead = true; if (s.kind === "fire") this.burst(s.x, 1.4, s.z, 0xff8a20, 12, 3.5, 0.5, 0.09);
+        if (s.kind === "goo") { this.p.slow = rand(1, 2); hud.flash("90,230,90", 0.35); hud.msg("Slimed! You are slowed.", 1.5); }     // goo slows you for 1-2 seconds
+      }
+      if (dead) { if (s.kind === "goo") this.burst(s.x, 1.1, s.z, 0x5ae05a, 10, 3, 0.5, 0.08); this.scene.remove(s.m); this.shots.splice(i, 1); }
     }
   }
 
@@ -790,7 +881,7 @@ export class Play {
   update(dt) {
     if (this.state === "complete") { this.updateAfter(dt); return; }
     this.t += dt; const p = this.p;
-    p.inv -= dt; p.cd -= dt; p.boltCd -= dt; p.cast -= dt; this.noise -= dt;
+    p.inv -= dt; p.cd -= dt; p.boltCd -= dt; p.cast -= dt; this.noise -= dt; if (p.slow > 0) p.slow -= dt;
     if (p.swing > 0) { p.swing -= dt; if (!p.swingHit && p.swing < 0.2) { p.swingHit = true; this.swordHit(); } }
     if (this.state === "dead") { this.endT += dt; camera.rotation.z = Math.min(0.8, this.endT * 1.2); camera.position.y = Math.max(0.3, 1.55 - this.endT * 1.2); this.updateFx(dt); this.updateEnemiesOnly(dt); return; }
 
@@ -802,7 +893,7 @@ export class Play {
     const [f, s] = moveInput();
     const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw), rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
     let mx = fx * f + rx * s, mz = fz * f + rz * s; const ml = Math.hypot(mx, mz);
-    if (ml > 0) { const k = Math.min(1, ml); mx /= ml; mz /= ml; const sp = moveSpeed() * (keys.ShiftLeft ? 1.25 : 1) * k; this.moveEnt(p, mx * sp * dt, mz * sp * dt, p.r); p.bob += dt * sp * 1.7; this.noise = Math.max(this.noise, 0.12); }
+    if (ml > 0) { const k = Math.min(1, ml); mx /= ml; mz /= ml; const sp = moveSpeed() * (keys.ShiftLeft ? 1.25 : 1) * k * (p.slow > 0 ? 0.4 : 1); this.moveEnt(p, mx * sp * dt, mz * sp * dt, p.r); p.bob += dt * sp * 1.7; this.noise = Math.max(this.noise, 0.12); }
     // actions
     const canClick = lock.active || lock.failed;
     if ((mouse.leftPressed && canClick || pressed("Space")) && p.cd <= 0) this.swordAttack();
@@ -824,7 +915,8 @@ export class Play {
     for (const e of this.enemies) this.updateEnemy(e, dt);
     this.enemies = this.enemies.filter((e) => !e.gone);
     this.updateDecoys(dt);
-    for (const pl of this.plates) if (!pl.used && Math.hypot(pl.x - p.x, pl.z - p.z) < 0.9) { pl.used = true; this.trapArrows(); }
+    for (const pl of this.plates) if (!pl.used && Math.hypot(pl.x - p.x, pl.z - p.z) < 0.9) { pl.used = true; this.springTrap(pl); }
+    this.updateHazards(dt);
     this.updateShots(dt); this.updateItems(dt); this.updateFx(dt);
 
     // stairs
@@ -837,7 +929,7 @@ export class Play {
       }
     }
     // hints
-    this.L.hints.forEach((h, i) => { if (!this.hintsDone.has(i) && Math.floor(p.x / T) === h.c && Math.floor(p.z / T) === h.r) { this.hintsDone.add(i); hud.msg(h.text, 6); } });
+    this.L.hints.forEach((h, i) => { if (!this.hintsDone.has(i) && Math.floor(p.x / T) === h.c && Math.floor(p.z / T) === h.r) { this.hintsDone.add(i); hud.msg(h.text, 6); narrate(h.text); } });
     // boss bar + objective
     const boss = this.enemies.find((e) => e.d.boss && !e.dead && e.state !== "idle");
     hud.boss(boss ? boss.d.name : null, boss ? boss.hp / boss.d.hp : 0);
@@ -856,16 +948,35 @@ export class Play {
   ambush(msg) {
     this.ambushed = true; const p = this.p, tier = this.L.tier ?? 0.5, n = 6 + Math.round(tier * 9), lr = this.L.lockRoom;
     this.computeFlow();
-    const cells = [];
+    // route from the exit back towards the player (the way the player must travel), following the flow field downhill
+    const st = this.stairs[0], route = [];
+    if (st) {
+      let c = st.c, r = st.r;
+      for (let guard = 0; guard < 400 && this.flow[r * this.cols + c] > 0; guard++) {
+        route.push([c, r]); let best = null;
+        for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const v = this.flow[(r + dr) * this.cols + c + dc]; if (v >= 0 && v < this.flow[r * this.cols + c] && (!best || v < best[0])) best = [v, c + dc, r + dr]; }
+        if (!best) break; c = best[1]; r = best[2];
+      }
+    }
+    const nearRoute = new Set();
+    route.forEach(([c, r], i) => { if (i % 2) return; for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) nearRoute.add((r + dr) * this.cols + c + dc); });
+    const exitCells = [], routeCells = [], cells = [];
     for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) {
       const d = this.flow[r * this.cols + c];
-      if (d < 7 || d > 36 || this.ch(c, r) === "E" || this.doorAt(c, r)) continue;
+      if (d < 5 || d > 60 || this.ch(c, r) === "E" || this.doorAt(c, r)) continue;
       if (lr && c >= lr.rect[0] && c <= lr.rect[2] && r >= lr.rect[1] && r <= lr.rect[3]) continue;
       const x = cx(c), z = cx(r); if (this.blocked(x, z, 0.5) || this.los(x, z, p.x, p.z)) continue;
-      cells.push([x, z]);
+      if (st && Math.abs(c - st.c) + Math.abs(r - st.r) <= 7 && d >= 5) exitCells.push([x, z]);
+      else if (nearRoute.has(r * this.cols + c) && d >= 7) routeCells.push([x, z]);
+      else if (d >= 7 && d <= 36) cells.push([x, z]);
     }
-    for (let i = cells.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [cells[i], cells[j]] = [cells[j], cells[i]]; }
-    const w = [["goblin", 1], ["archer", 0.7], ["skeleton", 0.5 + tier], ["chaos", 0.2 + tier * 0.8]], tot = w.reduce((a, b) => a + b[1], 0);
+    const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+    // the wave gathers around the exit (~40%), in rooms along the way to it (~40%), and elsewhere (rest)
+    const nExit = Math.ceil(n * 0.4), nRoute = Math.ceil(n * 0.4);
+    const picked = [...shuffle(exitCells).slice(0, nExit), ...shuffle(routeCells).slice(0, nRoute)];
+    const rest = shuffle([...cells, ...exitCells.slice(nExit), ...routeCells.slice(nRoute)]);
+    cells.length = 0; cells.push(...picked, ...rest);
+    const w = [["goblin", 1], ["archer", 0.7], ["skeleton", 0.5 + tier], ["chaos", 0.2 + tier * 0.8], ["crimson", Math.max(0, tier - 0.4) * 0.9]], tot = w.reduce((a, b) => a + b[1], 0);
     for (const [x, z] of cells.slice(0, n)) {
       let k = Math.random() * tot, type = "goblin"; for (const [t, v] of w) { if ((k -= v) <= 0) { type = t; break; } }
       const e = this.addEnemy(type, x, z); e.state = "chase"; e.ambush = true; this.burst(x, 1, z, 0xb070ff, 8, 2.5, 0.7, 0.07);
@@ -889,7 +1000,7 @@ export class Play {
     tm.mesh.position.y = 1.0 + Math.sin(this.t * 2) * 0.1; tm.mesh.rotation.y += dt * 1.4; tm.glow.material.opacity = 0.55 + Math.sin(this.t * 3.5) * 0.2;
     if (Math.hypot(tm.x - this.p.x, tm.z - this.p.z) < 1.5) {
       this.hasTome = true; this.scene.remove(tm.mesh, tm.glow); sfx.found(); hud.flash("170,120,255", 0.4);
-      this.say("You", TOME.found[0], 6); hud.msg("You found the Tome of Horass! Return to the stairwell.", 5); hud.objective(this.objectiveText());
+      this.say("You", TOME.found[this.L.book || 0], 6); hud.msg(`You found the ${this.bookName}! Return to the stairwell.`, 5); hud.objective(this.objectiveText());
       this.queueAmbush("The tome's magic has alarmed the dungeon — reinforcements are closing in! Get back to the stairwell!");
     }
   }

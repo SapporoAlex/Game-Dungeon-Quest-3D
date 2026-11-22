@@ -111,7 +111,7 @@ export const BASE_LEVELS = [
    {
     "c": 11,
     "r": 8,
-    "text": "A goblin! Left-click to attack. Press Q to drink a health potion."
+    "text": "A goblin! Left-click to attack. Walk over a health potion to pick it up and heal."
    },
    {
     "c": 15,

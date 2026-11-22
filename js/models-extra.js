@@ -79,6 +79,41 @@ export function makeWizard() {
   return root;
 }
 
+// ------------------------------------------------------------------ giant slime: a wobbling green blob with a big grin (spits goo)
+export function makeSlime() {
+  const root = new THREE.Group();
+  const gel = lam(0x4fd95a, { transparent: true, opacity: 0.82 }), core = lam(0x2a9a3a, { transparent: true, opacity: 0.9 });
+  const body = grp("body", [0, 0, 0], root);
+  body.add(ball(0.85, gel, [0, 0.72, 0], [1.05, 0.82, 1.05]));
+  body.add(ball(0.32, core, [-0.2, 0.55, -0.15]));                       // organic bits floating inside
+  body.add(ball(0.2, core, [0.28, 0.8, -0.05]));
+  body.add(ball(0.5, gel, [0, 0.12, 0], [1.9, 0.35, 1.9]));              // puddle at the base
+  const head = grp("head", [0, 0.95, 0.55], body);
+  const white = lam(0xf4fff0), black = glowMat(0x102010);
+  for (const s of [-1, 1]) { head.add(ball(0.13, white, [s * 0.26, 0.12, 0.15])); head.add(ball(0.06, black, [s * 0.26, 0.12, 0.27])); }
+  head.add(mesh(new THREE.TorusGeometry(0.2, 0.035, 6, 14, Math.PI), lam(0x155a20), [0, -0.12, 0.2], [0, 0, Math.PI]));   // grin
+  for (const n of ["arm_L", "arm_R", "leg_L", "leg_R"]) grp(n, [0, 0.5, 0], body);                                  // (unused limbs — keeps the shared animation code happy)
+  return root;
+}
+
+// ------------------------------------------------------------------ crimson chaos warrior: the chaos model re-coloured red with golden horns
+export function makeCrimson() {
+  const m = inst("chaos");
+  const near = (c, hex) => { const k = new THREE.Color(hex); return Math.abs(c.r - k.r) + Math.abs(c.g - k.g) + Math.abs(c.b - k.b) < 0.04; };
+  m.traverse((c) => {
+    if (!c.isMesh) return;
+    const col = c.material.color;
+    if (/^horn/.test(c.name)) { col.setHex(0xffc72c); c.material.emissive && c.material.emissive.setHex(0x553300); c.userData.baseEmissive = c.material.emissive ? c.material.emissive.clone() : null; c.scale.multiplyScalar(1.45); }
+    else if (near(col, 0x34344a)) col.setHex(0x8a1418);        // dark steel -> deep crimson
+    else if (near(col, 0x52526c)) col.setHex(0xc4262c);        // plate -> bright red
+    else if (near(col, 0x40405a)) col.setHex(0x9a1c22);        // shield
+    else if (near(col, 0x4a1668)) col.setHex(0x4a0a10);        // cape
+    else if (near(col, 0x8a32c0)) col.setHex(0xffc72c);        // purple trim / emblem -> gold
+    else if (near(col, 0x1c1c26)) col.setHex(0x2a0a0c);
+  });
+  return m;
+}
+
 // ------------------------------------------------------------------ elven princess: elf.glb recoloured (gown) + a tiara
 export function makePrincess() {
   const m = inst("elf");

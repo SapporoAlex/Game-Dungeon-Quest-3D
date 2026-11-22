@@ -1,7 +1,8 @@
 // Creates a short silent placeholder mp3 for every spoken line in js/dialogue.js that has no audio file yet.
 // Existing files are never overwritten, so it is safe to re-run after adding lines or after dropping in real recordings.
 //   node tools/make_dialogue_placeholders.mjs
-import { ALL_LINES, dialogueFile } from "../js/dialogue.js";
+import { ALL_LINES, dialogueFile, narrationFile } from "../js/dialogue.js";
+import { LEVELS } from "../js/levels.js";
 import { existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,3 +20,13 @@ for (const line of new Set(ALL_LINES)) {
   writeFileSync(f, mp3); made++; console.log("created", dialogueFile(line));
 }
 console.log(`${made} placeholder(s) created, ${new Set(ALL_LINES).size - made} already existed.`);
+
+// narrator lines: every level hint ("you have to…") -> audio/nar-<text>.mp3
+const nar = new Set(LEVELS.flatMap((L) => L.hints.map((h) => h.text)));
+let nmade = 0;
+for (const line of nar) {
+  const f = join(root, narrationFile(line));
+  if (existsSync(f)) continue;
+  writeFileSync(f, mp3); nmade++; console.log("created", narrationFile(line));
+}
+console.log(`${nmade} narrator placeholder(s) created, ${nar.size - nmade} already existed.`);

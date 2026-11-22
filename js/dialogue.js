@@ -23,13 +23,22 @@ export const WIZARD = {
   dying: ["Impossible… the lightning… fades…"],
 };
 
+// The four books hunted in the labyrinth quests (the first tome quest is the Tome of Horass; later ones cycle through the others).
+export const BOOKS = [
+  { name: "Tome of Horass" }, { name: "Manifest of Koont" }, { name: "Scripture of Bee'ge" }, { name: "Lost Passages of B'tseks", pl: true },
+];
 export const TOME = {
-  found: ["The Tome of Horass hums with power. Now, to leave this place!"],
+  found: BOOKS.map((b) => `The ${b.name} ${b.pl ? "hum" : "hums"} with power. Now, to leave this place!`),
 };
 
 export const ALL_LINES = [
   ...Object.values(LIRAEL).flat(), ...Object.values(PRINCESS).flat(), ...Object.values(WIZARD).flat(), ...Object.values(TOME).flat(),
 ];
+
+/** file name for a narrator line (the "you have to…" hints), e.g. "audio/nar-Step onto the stairwell to finish the quest..mp3" */
+export function narrationFile(text) {
+  return dialogueFile(text).replace("audio/dialogue-", "audio/nar-");
+}
 
 /** file name for a spoken line, e.g. "audio/dialogue-Hurry, I can hear them coming!.mp3" */
 export function dialogueFile(text) {

@@ -2,7 +2,9 @@
 // Rescue the Elven Princess · Escape.  Produces level objects in exactly the same format as js/levels-base.js,
 // so the game code treats generated and hand-made quests identically.  Pure data — no DOM — so tools/check_levels.mjs can run it.
 
-const mulberry32 = (a) => () => {
+import { BOOKS } from "./dialogue.js";
+
+const mulberry32 =(a) => () => {
   a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
   t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
@@ -47,9 +49,9 @@ const TEXT = {
   },
   tome: {
     names: ["The Library Labyrinth", "Maze of a Thousand Doors", "The Scribe's Warren", "Halls of Whispering Pages", "The Forgotten Archive", "Catacomb of Chapters", "The Last Labyrinth"],
-    desc: "The Tome of Horass lies hidden in the deepest chamber of a labyrinth of countless small rooms. Search every dead end, find the glowing book, then retrace your steps to the stairwell where you began.",
-    hint: "Somewhere in this labyrinth lies the Tome of Horass — a glowing book. Find it, then return to the stairwell.",
-    goalText: "Find the Tome of Horass.",
+    desc: (b) => `The ${b.name} ${b.pl ? "lie" : "lies"} hidden in the deepest chamber of a labyrinth of countless small rooms. Search every dead end, find the glowing book, then retrace your steps to the stairwell where you began.`,
+    hint: (b) => `Somewhere in this labyrinth ${b.pl ? "lie" : "lies"} the ${b.name} — a glowing book. Find it, then return to the stairwell.`,
+    goalText: (b) => `Find the ${b.name}.`,
   },
   princess: {
     names: ["The Silver Tower", "A Princess in Peril", "The Gilded Cage", "Moonlit Dungeon", "The Thornkeep Rescue", "Royal Escort", "Shadows over the Keep"],
@@ -64,6 +66,15 @@ const TEXT = {
     goalText: "Defeat the Dark Wizard.",
   },
 };
+
+// some of the "dragon" quests (odd ones) are slime quests instead: a giant slime that spits goo
+const SLIME = {
+  names: ["The Slime Pits", "Gooey Depths", "The Ooze Cavern"],
+  desc: "A giant slime has oozed up from the sewers and made the deepest hall its nest. It spits goo that slows you to a crawl. Track it down, burst it, then return to the stairwell where you began.",
+  hint: "A giant slime lurks somewhere in this dungeon. Dodge its goo — getting slimed slows you down — then burst it and return to the stairwell.",
+  goalText: "Slay the Giant Slime.",
+};
+const SLIME_THEMES = ["moss", "sea", "crypt"];
 
 // ----------------------------------------------------------------------------------------------- grid helpers
 function makeGrid(cols, rows) { return Array.from({ length: rows }, () => Array(cols).fill("#")); }
@@ -151,7 +162,8 @@ function layoutMaze(rng, gw, gh) {
 }
 
 // ----------------------------------------------------------------------------------------------- the generator proper
-function generate(n, kind, seed, count) {
+function generate(n, kind, seed, count, bookIdx = 0, monster = "dragon") {
+  const rng2 = mulberry32(seed ^ 0x9e3779b9);                    // separate stream for the newer features (halls, traps, elites) so the base layouts stay stable
   const rng = mulberry32(seed), ri = (a, b) => a + Math.floor(rng() * (b - a + 1)), pick = (a) => a[Math.floor(rng() * a.length)];
   const tier = n / (count - 1);                                  // 0 … 1 across the generated quests
   const labyrinth = kind === "tome";
@@ -300,9 +312,24 @@ function generate(n, kind, seed, count) {
     }
   }
 
+  // ------------------------------------------------------------ halls: some levels get big rooms with a high ceiling and pillars to hide behind
+  const tall = [], pillars = [];
+  const hallLevel = !labyrinth && kind !== "finale" && rng2() < 0.6;
+  const hallRooms = kind === "finale" ? [arena] : hallLevel ? rooms.filter((o) => !o.arena && o.w >= 5 && o.h >= 5) : [];
+  for (const room of hallRooms) {
+    tall.push({ c: room.x, r: room.y, w: room.w, h: room.h });
+    const spots = kind === "finale"
+      ? [[3, 3], [3, 8], [9, 2], [9, 9], [12, 3], [12, 8]].map(([a, b]) => [room.x + a, room.y + b])
+      : [[room.x + 1, room.y + 1], [room.x + room.w - 2, room.y + 1], [room.x + 1, room.y + room.h - 2], [room.x + room.w - 2, room.y + room.h - 2]];
+    for (const [c, r] of spots) {
+      if (!inb(g, c, r) || g[r][c] !== "." || used.has(key(c, r)) || roomAt(c, r) !== room.id) continue;
+      pillars.push([c, r]); mark(c, r);
+    }
+  }
+
   // ------------------------------------------------------------ enemies
   const enemies = [];
-  const weights = [["goblin", 1.0 - tier * 0.45], ["archer", 0.4], ["skeleton", 0.25 + tier * 0.55], ["chaos", 0.04 + tier * 0.5]];
+  const weights = [["goblin", 1.0 - tier * 0.45], ["archer", 0.4], ["skeleton", 0.25 + tier * 0.55], ["chaos", 0.04 + tier * 0.5], ["crimson", Math.max(0, tier - 0.35) * 0.7]];
   const roll = () => { const tot = weights.reduce((s, w) => s + w[1], 0); let x = rng() * tot; for (const [t, w] of weights) { if ((x -= w) <= 0) return t; } return "goblin"; };
   const placeCells = (o) => { const out = []; for (let r = o.y; r < o.y + o.h; r++) for (let c = o.x; c < o.x + o.w; c++) if (g[r][c] === "." && !used.has(key(c, r)) && !(special.has(o.id) && c === ctr(o)[0] && r === ctr(o)[1])) out.push([c, r]); return out; };
   const ePlaced = new Set();
@@ -320,12 +347,12 @@ function generate(n, kind, seed, count) {
   if (kind === "wizard") {
     const [wc, wr] = ctr(goalRoom); wizardCell = [wc, wr]; spawn("wizard", wc, wr);
     const cells = placeCells(goalRoom).filter(([c, r]) => !ePlaced.has(key(c, r)));
-    for (let k = 0; k < 3 + Math.round(tier * 3) && cells.length; k++) { const [c, r] = cells.splice(Math.floor(rng() * cells.length), 1)[0]; spawn(rng() < 0.45 + tier * 0.3 ? "chaos" : rng() < 0.5 ? "skeleton" : "archer", c, r); }
+    for (let k = 0; k < 3 + Math.round(tier * 3) && cells.length; k++) { const [c, r] = cells.splice(Math.floor(rng() * cells.length), 1)[0]; spawn(rng() < 0.45 + tier * 0.3 ? (tier > 0.5 && rng2() < 0.4 ? "crimson" : "chaos") : rng() < 0.5 ? "skeleton" : "archer", c, r); }
   }
   // dragons: the goal room (and, later on, a second lair) — each with a small guard
   if (kind === "dragon") {
     for (const room of tier >= 0.45 && farRooms[1] ? [goalRoom, farRooms[1]] : [goalRoom]) {
-      const [dc2, dr2] = ctr(room); spawn("dragon", dc2, dr2);
+      const [dc2, dr2] = ctr(room); spawn(monster, dc2, dr2);
       const cells = placeCells(room).filter(([c, r]) => !ePlaced.has(key(c, r)));
       for (let k = 0; k < 2 && cells.length; k++) { const [c, r] = cells.splice(Math.floor(rng() * cells.length), 1)[0]; spawn(rng() < 0.5 ? "archer" : "skeleton", c, r); }
     }
@@ -337,7 +364,7 @@ function generate(n, kind, seed, count) {
     spawn("dragon", A.x + 7, A.y + 3); spawn("dragon", A.x + 7, A.y + A.h - 4); wizardCell = [A.x + 10, ym]; spawn("wizard", A.x + 10, ym);
     finalePrincess = [A.x + A.w - 1, ym]; mark(...finalePrincess); mark(A.x + A.w - 2, ym);
     const cells = placeCells(A).filter(([c, r]) => c > A.x + 3 && !ePlaced.has(key(c, r)) && Math.hypot(c - (A.x + 7), r - (A.y + 3)) > 3 && Math.hypot(c - (A.x + 7), r - (A.y + A.h - 4)) > 3);
-    for (let k = 0; k < 7 && cells.length; k++) { const [c, r] = cells.splice(Math.floor(rng() * cells.length), 1)[0]; spawn(k < 4 ? "archer" : "chaos", c, r); }
+    for (let k = 0; k < 7 && cells.length; k++) { const [c, r] = cells.splice(Math.floor(rng() * cells.length), 1)[0]; spawn(k < 4 ? "archer" : k % 2 ? "crimson" : "chaos", c, r); }
     rugs.push({ c: A.x + 2, r: A.y + 2, w: A.w - 4, h: A.h - 4, pal: "crimson" });
     lockRoom = { door: [A.x - 1, A.doorRow], rect: [A.x, A.y, A.x + A.w - 1, A.y + A.h - 1] };
   }
@@ -347,13 +374,21 @@ function generate(n, kind, seed, count) {
     for (let k = 0; k < 2 && corr.length; k++) { const [c, r] = corr.splice(Math.floor(rng() * corr.length), 1)[0]; spawn(rng() < 0.5 ? "skeleton" : "goblin", c, r); }
   }
   // cap + make sure there is real opposition
-  while (enemies.length > 64) { const k = Math.floor(rng() * enemies.length); if (enemies[k].t !== "wizard" && enemies[k].t !== "dragon") enemies.splice(k, 1); }
+  while (enemies.length > 64) { const k = Math.floor(rng() * enemies.length); if (enemies[k].t !== "wizard" && enemies[k].t !== "dragon" && enemies[k].t !== "slime") enemies.splice(k, 1); }
 
   // ------------------------------------------------------------ plates
-  const plates = [];
-  for (let k = 0; k < 1 + Math.floor(tier * 3); k++) {
-    const room = pickRoom(), cells = placeCells(room); if (!cells.length) continue;
-    const [c, r] = cells[Math.floor(rng() * cells.length)]; plates.push([c, r]);
+  // hidden pressure plates, in rooms and in corridors. Early quests only have arrow traps; later ones add flame bursts and alarm gongs.
+  const plates = [], platesAt = new Set();
+  const corr = [];
+  for (let r = 1; r < R - 1; r++) for (let c = 1; c < C - 1; c++) if (g[r][c] === "." && roomAt(c, r) < 0 && !doorSet.has(key(c, r)) && !used.has(key(c, r)) && !closetCells.has(key(c, r)) && dAt(c, r) > 6) corr.push([c, r]);
+  const nPlates = 2 + Math.floor(tier * 5) + (hallLevel ? 1 : 0);
+  const trapType = () => { const x = rng2(); return tier < 0.2 || x < 0.5 ? "arrow" : x < 0.82 ? "fire" : "alarm"; };
+  for (let k = 0; k < nPlates; k++) {
+    let cell = null;
+    if (k % 2 === 1 && corr.length) cell = corr.splice(Math.floor(rng2() * corr.length), 1)[0];
+    else { const room = pickRoom(), cells = room ? placeCells(room) : []; if (cells.length) cell = cells[Math.floor(rng2() * cells.length)]; }
+    if (!cell || platesAt.has(key(...cell))) continue;
+    platesAt.add(key(...cell)); plates.push([cell[0], cell[1], trapType()]);
   }
 
   // ------------------------------------------------------------ goal data
@@ -361,12 +396,12 @@ function generate(n, kind, seed, count) {
   if (kind === "tome") { const [c, r] = ctr(goalRoom); out.tome = [c, r]; }
   if (kind === "princess") out.princessSpots = princessRooms.map(ctr);
   if (kind === "finale") { out.princessSpots = [finalePrincess]; out.lockRoom = lockRoom; }
-  out.tier = tier;
+  out.tier = tier; out.tall = tall; out.pillars = pillars;
   // facing: along the longest free run from the start cell
   let startDir = "N", bestRun = -1;
   for (const [k, [dc, dr]] of Object.entries(DIRS)) { let run = 0; while (open(g, sc + dc * (run + 1), sr + dr * (run + 1))) run++; if (run > bestRun) { bestRun = run; startDir = k; } }
 
-  const hints = [{ c: sc, r: sr, text: TEXT[kind].hint }];
+  const hints = [{ c: sc, r: sr, text: kind === "tome" ? TEXT.tome.hint(BOOKS[bookIdx]) : monster === "slime" ? SLIME.hint : TEXT[kind].hint }];
   if (firstSecret && n >= 2) { const [, , hc, hr] = firstSecret; if (open(g, hc, hr) && !(hc === sc && hr === sr)) hints.push({ c: hc, r: hr, text: "The stonework here looks different… a lighter wall — maybe a secret door? Press E beside it." }); }
   return {
     map: g.map((row) => row.join("")), start: [sc, sr], startDir, doors, enemies, props, plates, hints, rugs,
@@ -378,11 +413,15 @@ export function generateLevels() {
   const out = [], counters = { escape: 0, tome: 0, princess: 0, wizard: 0, dragon: 0, finale: 0 };
   ORDER.forEach((kind, i) => {
     const n = i, T = TEXT[kind], nameIdx = counters[kind]++;
-    const body = generate(n, kind, 0x51ed + n * 7919 + kind.length * 31, ORDER.length);
-    const themeKey = THEME_BY_KIND[kind][nameIdx % THEME_BY_KIND[kind].length];
+    const book = kind === "tome" ? nameIdx % BOOKS.length : 0;    // the first tome quest hunts the Tome of Horass, the rest cycle through the other books
+    const slime = kind === "dragon" && nameIdx % 2 === 1 && nameIdx < 7, slimeIdx = (nameIdx - 1) / 2;   // dragon quests 2, 4 and 6 are slime quests
+    const body = generate(n, kind, 0x51ed + n * 7919 + kind.length * 31, ORDER.length, book, slime ? "slime" : "dragon");
+    const txt = (f) => (typeof f === "function" ? f(BOOKS[book]) : f);
+    const themeKey = slime ? SLIME_THEMES[slimeIdx % SLIME_THEMES.length] : THEME_BY_KIND[kind][nameIdx % THEME_BY_KIND[kind].length];
     const goal = kind === "escape" ? "stairs" : kind;
     out.push({
-      id: `gen${i + 1}`, title: kind === "finale" ? "Final Quest" : `Quest ${i + 5}`, subtitle: T.names[nameIdx % T.names.length], desc: T.desc, kind, goal, goalText: T.goalText,
+      id: `gen${i + 1}`, title: kind === "finale" ? "Final Quest" : `Quest ${i + 5}`, subtitle: slime ? SLIME.names[slimeIdx] : T.names[nameIdx % T.names.length], desc: slime ? SLIME.desc : txt(T.desc), kind, goal, goalText: slime ? SLIME.goalText : txt(T.goalText), book,
+      boss: kind === "dragon" ? (slime ? "slime" : "dragon") : undefined,
       theme: THEMES[themeKey], decoys: kind === "wizard" && nameIdx === 2,   // the third Dark Wizard quest: he conjures decoy copies
       ...body,
     });
