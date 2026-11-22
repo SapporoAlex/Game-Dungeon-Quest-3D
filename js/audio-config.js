@@ -9,7 +9,7 @@
 // To use your own recordings instead, put the files in /audio and set the paths here (e.g. "audio/dungeon.mp3", "audio/shop.mp3").
 // (The previous track, audio/music.mp3, is still in the repo — set MUSIC.src to "audio/music.mp3" to bring it back.)
 export const MUSIC = { src: "", volume: 0.2 };
-export const SHOP_MUSIC = { src: "", volume: 0.2 };
+export const SHOP_MUSIC = { src: "", volume: 0.09 };
 
 export const SFX = {
   // name:      { files: [...], volume }

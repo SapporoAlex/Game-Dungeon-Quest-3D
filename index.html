@@ -82,6 +82,15 @@
   #screen:has(#levelList) p{margin:3px 0;font-size:17px} #screen:has(#levelList) .menu.row .btn{padding:8px 34px;margin:4px;min-width:220px;font-size:16px}
   #screen:has(#levelList) .rule{margin:6px auto}
   #screen:has(#levelList) #levelList{flex:1 1 0;min-height:0;max-height:none;width:min(780px,96vw);padding-bottom:30px;-webkit-mask-image:linear-gradient(#000 calc(100% - 30px),transparent);mask-image:linear-gradient(#000 calc(100% - 30px),transparent)}
+  #campWrap,#campSide,#campMain{display:contents}
+  @media (min-width:900px) and (min-height:561px){
+    body:not(.touch) #screen:has(#campWrap){justify-content:center;padding:20px 28px}
+    body:not(.touch) #campWrap{display:flex;flex-direction:row;align-items:stretch;gap:36px;width:min(1180px,96vw);height:100%;min-height:0}
+    body:not(.touch) #campSide{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 300px;text-align:center}
+    body:not(.touch) #campSide .menu.row{flex-direction:column}
+    body:not(.touch) #campMain{display:flex;flex-direction:column;flex:1 1 0;min-width:0;min-height:0}
+    body:not(.touch) #screen:has(#campWrap) #levelList{width:100%}
+  }
   .lvl{pointer-events:auto;cursor:pointer;display:block;flex:none;padding:0;margin:0;width:100%;text-align:left;font:inherit;color:#f0e2b8;background:#140c05;border:1px solid var(--gold-d);border-radius:3px;overflow:hidden;
     box-shadow:0 4px 12px rgba(0,0,0,.6);transition:border-color .2s,box-shadow .2s,transform .15s}
   .lvl-banner{position:relative;display:block;height:112px;background:#1c130a center/cover no-repeat}

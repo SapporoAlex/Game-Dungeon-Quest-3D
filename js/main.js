@@ -70,12 +70,12 @@ function camp(note) {
   S.hp = S.maxHp; save();
   const next = S.levelIdx, allDone = next >= LEVELS.length;
   const cards = LEVELS.map((l, i) => levelCard(i, i < next ? "done" : i === next ? "next" : "locked")).join("");
-  show(`<h2>Camp</h2>${note ? `<p class="note">${note}</p>` : ""}
+  show(`<div id="campWrap"><div id="campSide"><h2>Camp</h2>${note ? `<p class="note">${note}</p>` : ""}
     <p class="stats">🪙 <b>${S.gold}</b> gold &nbsp; 📿 <b>${S.amulet ? "Rebirth amulet ready" : "no amulet"}</b> &nbsp; ♥ <b>${S.maxHp}</b> health &nbsp; ⚡ <b>${S.mana}/${S.maxMana}</b> magic &nbsp; ⚔ <b>${1 + S.attackLvl}</b> power</p>
     ${allDone ? "<p>🏆 You have conquered every quest in the dungeon!</p>" : ""}
-    <div class="menu row"><button class="btn" data-act="shop">Lirael's Shop</button><button class="btn" data-act="title">Main Menu</button>${momoBtn(true)}</div>
-    <div class="rule"><i></i><span>Choose a quest</span><i></i></div>
-    <div id="levelList">${cards}</div>`,
+    <div class="menu row"><button class="btn" data-act="shop">Lirael's Shop</button><button class="btn" data-act="title">Main Menu</button>${momoBtn(true)}</div></div>
+    <div id="campMain"><div class="rule"><i></i><span>Choose a quest</span><i></i></div>
+    <div id="levelList">${cards}</div></div></div>`,
     { momo: () => { setMomo(!S.momo); camp(S.momo ? "Momo mode on: 20 hearts, and enemies attack 50% slower." : "Momo mode off."); }, shop: startShop, play: (i) => startLevel(+i), title });
   requestAnimationFrame(() => document.querySelector("#levelList .lvl.next")?.scrollIntoView({ block: "center" }));
 }

@@ -235,11 +235,15 @@ export function setShopMusic(on) { wantShop = on; syncMusic(); }
 
 // spoken dialogue: audio/dialogue-<text>.mp3 (silent placeholders until real recordings are dropped in)
 let voice;
+const VOICE_GAIN = 3;   // raise/lower to taste
 export function sayLine(text) {
   try {
     if (voice) voice.pause();
     voice = new Audio(encodeURI(dialogueFile(text)).replace(/#/g, "%23"));
-    voice.volume = 0.9; voice.play().catch(() => {});
+    voice.volume = 1;
+    // HTMLAudio volume tops out at 1.0, so route through a gain node to make quiet recordings louder
+    try { const g = AC.createGain(); g.gain.value = VOICE_GAIN; AC.createMediaElementSource(voice).connect(g).connect(AC.destination); } catch (e) {}
+    voice.play().catch(() => {});
   } catch (e) {}
 }
 export function stopLine() { try { if (voice) voice.pause(); } catch (e) {} }
