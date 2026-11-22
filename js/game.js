@@ -2,7 +2,7 @@
 import {
   THREE, T, WALL_H, camera, TEX, inst, parts, flashModel, glowSprite, keys, mouse, pressed, lock, sfx, moveInput, rumble, sayLine, narrate, stopLine,
 } from "./engine.js";
-import { makeArcher, makeWizard, makeSlime, makeCrimson, makePrincess, makeTome, makeBookshelf, makeRug } from "./models-extra.js";
+import { makeArcher, makeWizard, makeSword, makeSlime, makeCrimson, makePrincess, makeTome, makeBookshelf, makeRug } from "./models-extra.js";
 import { PRINCESS, WIZARD, TOME, BOOKS } from "./dialogue.js";
 import { LEVELS } from "./levels.js";
 import { S, save, moveSpeed, swordDmg, boltDmg, BOLT_COST } from "./state.js";
@@ -412,7 +412,7 @@ export class Play {
   // ------------------------------------------------------------------ first-person viewmodel
   buildViewmodel() {
     this.vm = new THREE.Group(); camera.add(this.vm);
-    this.sword = inst("sword"); this.sword.scale.setScalar(0.42);
+    this.sword = makeSword(); this.sword.scale.setScalar(0.42);
     this.vm.add(this.sword);
     const glove = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 10), new THREE.MeshStandardMaterial({ color: 0xe8b890, roughness: 1 }));
     const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.1, 0.5, 12), new THREE.MeshStandardMaterial({ color: 0x24365a, roughness: 1 }));

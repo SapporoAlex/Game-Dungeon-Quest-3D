@@ -24,14 +24,14 @@ export function resetAll() { Object.assign(S, DEFAULTS); S.momo = readMomo(); ap
 
 export const moveSpeed = () => 5.0 + 0.55 * S.speedLvl;
 export const swordDmg = () => 1 + S.attackLvl;
-export const boltDmg = () => 3 * (2 + S.attackLvl);   // lightning hits 3x as hard
+export const boltDmg = () => 6;   // lightning is strong but fixed: the Attack Potion only upgrades the sword
 export const BOLT_COST = 5;   // lightning is powerful: 5 magic per bolt
 
 export const SHOP_ITEMS = [
   { id: "amulet", name: "Amulet of Rebirth", price: 100, model: "amulet", desc: "When your health hits zero you rise again at full health — the amulet is then lost (carry one)", max: () => S.amulet >= 1, buy() { S.amulet = 1; } },
-  { id: "mana", name: "Mana Potion", price: 100, model: "potion_mana", desc: "+2 max magic for your lightning", max: () => S.maxMana >= 30, buy() { S.maxMana += 2; S.mana += 2; } },
+  { id: "mana", name: "Mana Potion", price: 100, model: "potion_mana", desc: "+6 max magic for your lightning", max: () => S.maxMana >= 40, buy() { S.maxMana += 6; S.mana += 6; } },
   { id: "speed", name: "Speed Potion", price: 50, model: "potion_speed", desc: "Permanently run faster", max: () => S.speedLvl >= 5, buy() { S.speedLvl++; } },
-  { id: "attack", name: "Attack Potion", price: 80, model: "potion_attack", desc: "Sword & lightning hit harder", max: () => S.attackLvl >= 5, buy() { S.attackLvl++; } },
+  { id: "attack", name: "Attack Potion", price: 80, model: "potion_attack", desc: "Your sword hits harder", max: () => S.attackLvl >= 5, buy() { S.attackLvl++; } },
   { id: "maxhealth", name: "Heart Potion", price: 80, model: "potion_maxhealth", desc: "+2 max health", max: () => S.momo || S.baseHp >= 14, buy() { S.baseHp += 2; applyMode(); } },
-  { id: "search", name: "Seeker Potion", price: 50, model: "potion_search", desc: "Better loot & wider pickup reach", max: () => S.luckLvl >= 5, buy() { S.luckLvl++; S.maxMana += 2; } },
+  { id: "search", name: "Seeker Potion", price: 50, model: "potion_search", desc: "More loot from searching & a wider pickup reach", max: () => S.luckLvl >= 5, buy() { S.luckLvl++; } },
 ];

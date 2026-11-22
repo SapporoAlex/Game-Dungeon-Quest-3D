@@ -79,6 +79,33 @@ export function makeWizard() {
   return root;
 }
 
+// ------------------------------------------------------------------ the player's short sword (first-person view model). Blade points +Y, flat faces toward +/-Z.
+export function makeSword() {
+  const root = new THREE.Group();
+  const steel = lam(0xdfe6ee, { emissive: 0x2c323a }), groove = lam(0x8d98a6, { emissive: 0x1c2026 }), gold = lam(0xf0c040, { emissive: 0x4a3608 }), leather = lam(0x5a3420), edge = lam(0xffffff, { emissive: 0x555a60 });
+  // blade: diamond cross-section with a central ridge; the two edges run straight and then converge neatly on the centre line at the point
+  const rows = [[0.07, 0.06, 0.017], [0.66, 0.054, 0.015], [1.0, 0, 0]];                // [y, half-width, ridge height]
+  const pos = [], tri = (a, b, c) => pos.push(...a, ...b, ...c);
+  for (let i = 0; i < rows.length - 1; i++) {
+    const [y0, w0, t0] = rows[i], [y1, w1, t1] = rows[i + 1];
+    const L0 = [-w0, y0, 0], R0 = [w0, y0, 0], F0 = [0, y0, t0], B0 = [0, y0, -t0], L1 = [-w1, y1, 0], R1 = [w1, y1, 0], F1 = [0, y1, t1], B1 = [0, y1, -t1];
+    tri(L0, L1, F1); tri(L0, F1, F0); tri(R0, F0, F1); tri(R0, F1, R1);          // front faces
+    tri(L0, B0, B1); tri(L0, B1, L1); tri(R0, R1, B1); tri(R0, B1, B0);          // back faces
+  }
+  const bg = new THREE.BufferGeometry(); bg.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); bg.computeVertexNormals();
+  root.add(new THREE.Mesh(bg, new THREE.MeshLambertMaterial({ color: 0xbcc5d0, emissive: 0x0e1218, side: THREE.DoubleSide })));
+  root.add(mesh(new THREE.BoxGeometry(0.1, 0.05, 0.045), steel, [0, 0.1, 0]));                           // blade root, under the guard
+  void groove; void edge;
+  // crossguard, ricasso, grip and pommel
+  root.add(mesh(new THREE.BoxGeometry(0.3, 0.05, 0.07), gold, [0, 0.07, 0]));
+  for (const s of [-1, 1]) root.add(ball(0.04, gold, [s * 0.15, 0.07, 0]));
+  root.add(mesh(new THREE.BoxGeometry(0.05, 0.06, 0.04), gold, [0, 0.11, 0]));
+  root.add(mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.2, 10), leather, [0, -0.06, 0]));
+  for (const y of [-0.02, -0.07, -0.12]) root.add(mesh(new THREE.TorusGeometry(0.031, 0.007, 5, 10), lam(0x2e1a0e), [0, y, 0], [Math.PI / 2, 0, 0]));
+  root.add(ball(0.05, gold, [0, -0.19, 0]));
+  return root;
+}
+
 // ------------------------------------------------------------------ giant slime: a wobbling green blob with a big grin (spits goo)
 export function makeSlime() {
   const root = new THREE.Group();
