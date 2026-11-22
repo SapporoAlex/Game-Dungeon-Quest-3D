@@ -70,6 +70,6 @@ const base = BASE_LEVELS.map((L) => {
   const lvl = { ...L, theme: BASE_THEMES[L.id], kind: x.kind, goalText: x.goalText, desc: x.desc, props: [...L.props, ...(x.props || [])], rugs: x.rugs || [], lockRoom: x.lockRoom };
   if (L.id !== "tutorial") lvl.enemies = addPartners(lvl);       // the tutorial stays gentle
   return lvl;
-});
+}).map((lvl, i) => (i < 5 ? { ...lvl, enemies: lvl.enemies.map((e) => (e.t === "chaos" || e.t === "crimson" ? { ...e, t: "skeleton" } : e)) } : lvl));   // no chaos warriors in the first 5 quests
 
 export const LEVELS = [...base, ...generateLevels()];

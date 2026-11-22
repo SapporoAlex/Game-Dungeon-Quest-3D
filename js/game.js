@@ -19,8 +19,8 @@ const DEF = {
   goblin: { model: "goblin", name: "Goblin", hp: 1, speed: 5.9, dmg: 1, reach: 1.55, cd: 0.55, wind: 0.18, r: 0.4, scale: 1.1, coins: [1, 2] },
   archer: { model: "goblin", name: "Goblin Archer", hp: 1, speed: 4.0, dmg: 1, reach: 0, cd: 1.5, wind: 0.48, r: 0.4, scale: 1.1, coins: [1, 3], ranged: { min: 4.5, max: 16, arrow: 12.5 } },
   skeleton: { model: "skeleton", name: "Skeleton", hp: 3, speed: 3.8, dmg: 1, reach: 1.95, cd: 0.7, wind: 0.24, r: 0.38, scale: 1.0, coins: [1, 3] },
-  chaos: { model: "chaos", name: "Chaos Warrior", noKnock: true, hp: 8, speed: 3.2, dmg: 2, reach: 2.3, cd: 1.0, wind: 0.34, r: 0.6, scale: 1.0, coins: [2, 4] },
-  crimson: { model: "chaos", name: "Crimson Warrior", noKnock: true, hp: 18, speed: 3.5, dmg: 3, reach: 2.4, cd: 0.9, wind: 0.32, r: 0.65, scale: 1.12, coins: [5, 8] },   // red chaos warrior with golden horns: tougher, hits harder
+  chaos: { model: "chaos", name: "Chaos Warrior", noKnock: true, hp: 8, speed: 3.2, dmg: 3, reach: 2.3, cd: 1.0, wind: 0.34, r: 0.6, scale: 1.0, coins: [2, 4] },
+  crimson: { model: "chaos", name: "Crimson Warrior", noKnock: true, hp: 18, speed: 3.5, dmg: 5, reach: 2.4, cd: 0.9, wind: 0.32, r: 0.65, scale: 1.12, coins: [5, 8] },   // red chaos warrior with golden horns: tougher, hits harder
   slime: { model: "slime", name: "Giant Slime", noKnock: true, hp: 26, speed: 2.3, dmg: 1, reach: 0, cd: 2.0, wind: 0.55, r: 1.0, scale: 1.45, coins: [8, 12], boss: true, ranged: { min: 4, max: 15, arrow: 9.5, goo: true } },   // spits goo that slows you
   dragon: { model: "dragon", name: "Red Dragon", noKnock: true, hp: 30, speed: 2.8, dmg: 3, reach: 3.3, cd: 1.2, wind: 0.45, r: 1.15, scale: 0.95, coins: [8, 12], boss: true },
   decoy: { model: "wizard", name: "Dark Wizard", hp: 1, speed: 2.7, dmg: 0, reach: 0, cd: 3.1, wind: 0.95, r: 0.45, scale: 1.1, coins: [0, 0], ranged: { min: 6, max: 19 }, decoy: true },   // harmless copy conjured by the wizard on decoy levels
@@ -539,14 +539,13 @@ export class Play {
     if (e.type === "wizard") for (const o of this.enemies) if (o.type === "decoy" && !o.dead) this.vanish(o);   // the copies vanish with the wizard
     const [a, b] = e.d.coins;
     const loot = [["coin", irand(a, b)]];
-    if (Math.random() < 0.28) loot.push(["mana", 1]);
-    if (Math.random() < 0.22) loot.push(["health", 1]);
+    // enemies only drop gold (potions come from crates, barrels, tables and chests)
     if (e.type === "dragon" || e.type === "slime") {
-      loot.push(["health", 2], ["mana", 2]); hud.boss(null); hud.msg(e.type === "slime" ? "The Giant Slime has burst!" : "The Red Dragon has fallen!", 5);
+      hud.boss(null); hud.msg(e.type === "slime" ? "The Giant Slime has burst!" : "The Red Dragon has fallen!", 5);
       if (this.L.goal === "dragon" && this.dragonDead()) this.queueAmbush(e.type === "slime" ? "The slime's death-cry echoes — creatures swarm from the dark! Fight your way back to the stairwell!" : "The dragon's death-roar echoes — creatures swarm from the dark! Fight your way back to the stairwell!");
     }
     if (e.type === "wizard") {
-      loot.push(["health", 2], ["mana", 3]); hud.boss(null); hud.msg("The Dark Wizard has fallen!", 5);
+      hud.boss(null); hud.msg("The Dark Wizard has fallen!", 5);
       if (this.L.goal === "wizard") this.queueAmbush("The wizard's spell breaks — his minions surge from the shadows! Fight your way back to the stairwell!"); this.say("Dark Wizard", WIZARD.dying[0], 4);
       const ud = e.mesh.userData; if (ud.orbLight) ud.orbLight.intensity = 0; if (ud.eyeMat) ud.eyeMat.color.setHex(0x203a24); if (ud.orb) ud.orb.visible = false;
     }
@@ -626,11 +625,12 @@ export class Play {
     this.bolt(from, end);
     this.burst(end.x, end.y, end.z, 0xbff0ff, 10, 3, 0.4, 0.05);
     if (best && best.e) {
-      this.damageEnemy(best.o, boltDmg(), fx, fz, 2.2);
+      const bd = (e) => (e.type === "wizard" ? Math.ceil(boltDmg() / 2) : boltDmg());      // dark wizards are twice as resistant to lightning
+      this.damageEnemy(best.o, bd(best.o), fx, fz, 2.2);
       // chain to a nearby enemy
       let chain = null, cd = 5.5;
       for (const e of this.enemies) { if (e.dead || e === best.o) continue; const d = Math.hypot(e.x - best.o.x, e.z - best.o.z); if (d < cd && this.los(best.o.x, best.o.z, e.x, e.z)) { cd = d; chain = e; } }
-      if (chain) { this.bolt(end, new THREE.Vector3(chain.x, 1.2, chain.z)); this.damageEnemy(chain, Math.ceil(boltDmg() / 2), 0, 0, 0.5); }
+      if (chain) { this.bolt(end, new THREE.Vector3(chain.x, 1.2, chain.z)); this.damageEnemy(chain, Math.ceil(bd(chain) / 2), 0, 0, 0.5); }
     } else if (best) this.openProp(best.o);
   }
   // ------------------------------------------------------------------ enemies
@@ -976,7 +976,7 @@ export class Play {
     const picked = [...shuffle(exitCells).slice(0, nExit), ...shuffle(routeCells).slice(0, nRoute)];
     const rest = shuffle([...cells, ...exitCells.slice(nExit), ...routeCells.slice(nRoute)]);
     cells.length = 0; cells.push(...picked, ...rest);
-    const w = [["goblin", 1], ["archer", 0.7], ["skeleton", 0.5 + tier], ["chaos", 0.2 + tier * 0.8], ["crimson", Math.max(0, tier - 0.4) * 0.9]], tot = w.reduce((a, b) => a + b[1], 0);
+    const w = [["goblin", 1], ["archer", 0.7], ["skeleton", 0.5 + tier], ["chaos", this.idx < 5 ? 0 : 0.2 + tier * 0.8], ["crimson", this.idx < 5 ? 0 : Math.max(0, tier - 0.4) * 0.9]], tot = w.reduce((a, b) => a + b[1], 0);
     for (const [x, z] of cells.slice(0, n)) {
       let k = Math.random() * tot, type = "goblin"; for (const [t, v] of w) { if ((k -= v) <= 0) { type = t; break; } }
       const e = this.addEnemy(type, x, z); e.state = "chase"; e.ambush = true; this.burst(x, 1, z, 0xb070ff, 8, 2.5, 0.7, 0.07);
