@@ -29,7 +29,7 @@ export const BOLT_COST = 5;   // lightning is powerful: 5 magic per bolt
 
 export const SHOP_ITEMS = [
   { id: "amulet", name: "Amulet of Rebirth", price: 100, model: "amulet", desc: "When your health hits zero you rise again at full health — the amulet is then lost (carry one)", max: () => S.amulet >= 1, buy() { S.amulet = 1; } },
-  { id: "mana", name: "Mana Potion", price: 20, model: "potion_mana", desc: "+4 magic for your lightning", max: () => S.mana >= S.maxMana, buy() { S.mana = Math.min(S.maxMana, S.mana + 4); } },
+  { id: "mana", name: "Mana Potion", price: 100, model: "potion_mana", desc: "+2 max magic for your lightning", max: () => S.maxMana >= 30, buy() { S.maxMana += 2; S.mana += 2; } },
   { id: "speed", name: "Speed Potion", price: 50, model: "potion_speed", desc: "Permanently run faster", max: () => S.speedLvl >= 5, buy() { S.speedLvl++; } },
   { id: "attack", name: "Attack Potion", price: 80, model: "potion_attack", desc: "Sword & lightning hit harder", max: () => S.attackLvl >= 5, buy() { S.attackLvl++; } },
   { id: "maxhealth", name: "Heart Potion", price: 80, model: "potion_maxhealth", desc: "+2 max health", max: () => S.momo || S.baseHp >= 14, buy() { S.baseHp += 2; applyMode(); } },

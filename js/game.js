@@ -21,7 +21,7 @@ const DEF = {
   skeleton: { model: "skeleton", name: "Skeleton", hp: 3, speed: 3.8, dmg: 1, reach: 1.95, cd: 0.7, wind: 0.24, r: 0.38, scale: 1.0, coins: [1, 3] },
   chaos: { model: "chaos", name: "Chaos Warrior", noKnock: true, hp: 8, speed: 3.2, dmg: 3, reach: 2.3, cd: 1.0, wind: 0.34, r: 0.6, scale: 1.0, coins: [2, 4] },
   crimson: { model: "chaos", name: "Crimson Warrior", noKnock: true, hp: 18, speed: 3.5, dmg: 5, reach: 2.4, cd: 0.9, wind: 0.32, r: 0.65, scale: 1.12, coins: [5, 8] },   // red chaos warrior with golden horns: tougher, hits harder
-  slime: { model: "slime", name: "Giant Slime", noKnock: true, hp: 26, speed: 2.3, dmg: 1, reach: 0, cd: 2.0, wind: 0.55, r: 1.0, scale: 1.45, coins: [8, 12], boss: true, ranged: { min: 4, max: 15, arrow: 9.5, goo: true } },   // spits goo that slows you
+  slime: { model: "slime", name: "Giant Slime", noKnock: true, hp: 104, speed: 2.3, dmg: 1, reach: 0, cd: 2.0, wind: 0.55, r: 1.0, scale: 1.45, coins: [8, 12], boss: true, ranged: { min: 4, max: 15, arrow: 9.5, goo: true } },   // spits goo that slows you
   dragon: { model: "dragon", name: "Red Dragon", noKnock: true, hp: 30, speed: 2.8, dmg: 3, reach: 3.3, cd: 1.2, wind: 0.45, r: 1.15, scale: 0.95, coins: [8, 12], boss: true },
   decoy: { model: "wizard", name: "Dark Wizard", hp: 1, speed: 2.7, dmg: 0, reach: 0, cd: 3.1, wind: 0.95, r: 0.45, scale: 1.1, coins: [0, 0], ranged: { min: 6, max: 19 }, decoy: true },   // harmless copy conjured by the wizard on decoy levels
   wizard: { model: "wizard", name: "Dark Wizard", hp: 14, speed: 2.7, dmg: 2, reach: 0, cd: 3.1, wind: 0.95, r: 0.45, scale: 1.1, coins: [12, 18], boss: true, ranged: { min: 6, max: 19 } },
@@ -46,7 +46,7 @@ export class Play {
     this.scene.background = new THREE.Color(this.theme.fog);
     this.scene.fog = new THREE.FogExp2(this.theme.fog, 0.058);
     this.t = 0; this.state = "play"; this.kills = 0; this.noise = 0;
-    this.doors = []; this.props = []; this.enemies = []; this.items = []; this.shots = []; this.fx = []; this.plates = []; this.hazards = [];
+    this.doors = []; this.props = []; this.enemies = []; this.items = []; this.shots = []; this.fx = []; this.plates = []; this.hazards = []; this.puddles = [];
     this.pillarAt = new Map();                                    // cell index -> [x, z] of the pillar standing in it
     this.torches = []; this.stairs = []; this.hintsDone = new Set();
     this.hasTome = false; this.tome = null; this.princess = null; this.lockState = null; this.bubbleT = 0; this.ambushT = 0; this.ambushMsg = ""; this.ambushed = false;
@@ -232,6 +232,54 @@ export class Play {
       if (e.t === "dragon" && L.goal === "stairs") continue;                 // escape quests have no boss
       if (!L.thin || L.thin >= 1 || Math.random() < L.thin) this.addEnemy(e.t, cx(e.c), cx(e.r));
     }
+    if (L.boss === "slime") this.buildPuddles();
+  }
+
+  // slime quests: sticky puddles of goo are scattered over the floor (and pooled around the slime's nest); walking through one slows you
+  buildPuddles() {
+    const [sc, sr] = this.L.start, slimes = this.enemies.filter((e) => e.type === "slime"), cells = [];
+    for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) {
+      if (this.isWall(c, r) || this.ch(c, r) === "E" || this.doorAt(c, r) || this.pillarAt.has(r * this.cols + c)) continue;
+      if (Math.abs(c - sc) + Math.abs(r - sr) < 5 || this.blocked(cx(c), cx(r), 0.6)) continue;
+      cells.push([c, r]);
+    }
+    for (let i = cells.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [cells[i], cells[j]] = [cells[j], cells[i]]; }
+    const spots = cells.slice(0, Math.min(22, Math.ceil(cells.length / 14))).map(([c, r]) => [cx(c) + rand(-0.6, 0.6), cx(r) + rand(-0.6, 0.6), rand(0.9, 1.5)]);
+    for (const s of slimes) for (let k = 0; k < 5; k++) { const a = rand(0, 6.28), d = rand(1.5, 4.5); spots.push([s.x + Math.cos(a) * d, s.z + Math.sin(a) * d, rand(0.9, 1.5)]); }
+    const mat = new THREE.MeshLambertMaterial({ color: 0x4fd95a, emissive: 0x1a7a2a, transparent: true, opacity: 0.78 });
+    for (const [x, z, rad] of spots) {
+      if (this.isWall(Math.floor(x / T), Math.floor(z / T)) || this.blocked(x, z, 0.4)) continue;
+      const m = new THREE.Mesh(new THREE.CircleGeometry(rad, 20), mat); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.035, z); m.scale.set(1, rand(0.75, 1), 1); m.rotation.z = rand(0, 6.28);
+      this.scene.add(m); this.puddles.push({ x, z, r: rad * 0.85 });
+    }
+  }
+  updatePuddles() {
+    const p = this.p;
+    for (const pd of this.puddles) if ((p.x - pd.x) ** 2 + (p.z - pd.z) ** 2 < pd.r * pd.r) {
+      if (!(p.slow > 0) && !this.puddleMsg) { this.puddleMsg = true; hud.msg("Sticky goo! It slows you down — go around it.", 2.5); }
+      p.slow = Math.max(p.slow || 0, 0.35); break;
+    }
+  }
+  // while the giant slime is awake, fresh chaos warriors and goblin archers keep streaming into the area around its nest
+  updateSlimeReinforcements(dt) {
+    const sl = this.enemies.find((e) => e.type === "slime" && !e.dead && e.state !== "idle");
+    if (!sl) return;
+    this.reinfT = (this.reinfT ?? 4) - dt; if (this.reinfT > 0) return;
+    this.reinfT = rand(6, 9);
+    if (this.enemies.filter((e) => e.reinf && !e.dead).length >= 7) return;
+    const hc = Math.floor((sl.homeX ?? sl.x) / T), hr = Math.floor((sl.homeZ ?? sl.z) / T), cands = [];
+    for (let r = hr - 13; r <= hr + 13; r++) for (let c = hc - 13; c <= hc + 13; c++) {
+      if (this.isWall(c, r) || this.doorAt(c, r) || this.ch(c, r) === "E") continue;
+      const d = Math.hypot(c - hc, r - hr); if (d < 5 || d > 13) continue;
+      const x = cx(c), z = cx(r);
+      if (this.blocked(x, z, 0.6) || Math.hypot(x - this.p.x, z - this.p.z) < 7 || this.los(x, z, this.p.x, this.p.z)) continue;
+      cands.push([x, z]);
+    }
+    if (!cands.length) return;
+    const [x, z] = cands[Math.floor(Math.random() * cands.length)], tier = this.L.tier ?? 0.5;
+    const type = Math.random() < 0.5 ? "archer" : tier > 0.6 && Math.random() < 0.3 ? "crimson" : "chaos";
+    const e = this.addEnemy(type, x, z); e.state = "chase"; e.reinf = true; this.burst(x, 1, z, 0x5ae05a, 10, 2.5, 0.7, 0.07); this.noise = Math.max(this.noise, 0.3);
+    if (!this.reinfMsg) { this.reinfMsg = true; hud.msg("The slime's cries summon more fighters!", 3.5); }
   }
 
   buildGoalObjects() {
@@ -283,6 +331,7 @@ export class Play {
     const e = { type, d: this.atkMul === 1 ? d : { ...d, cd: d.cd * this.atkMul, wind: d.wind * this.atkMul }, x, z, yaw: rand(0, 6.28), hp: d.hp, mesh: m, p: parts(m, pn), state: "idle", atk: rand(0.2, d.cd), wind: 0, stagger: 0,
       kx: 0, kz: 0, flash: 0, dead: false, deadT: 0, walk: rand(0, 6), senseT: Math.random() * 0.3, los: false, fireCd: rand(1, 3), biting: 0, stuck: 0, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: rand(1, 3), stuckT: 0 };
     if (this.L.id === "tutorial") e.noDoors = true;
+    e.homeX = x; e.homeZ = z;
     this.enemies.push(e);
     return e;
   }
@@ -916,7 +965,7 @@ export class Play {
     this.enemies = this.enemies.filter((e) => !e.gone);
     this.updateDecoys(dt);
     for (const pl of this.plates) if (!pl.used && Math.hypot(pl.x - p.x, pl.z - p.z) < 0.9) { pl.used = true; this.springTrap(pl); }
-    this.updateHazards(dt);
+    this.updateHazards(dt); this.updatePuddles(); this.updateSlimeReinforcements(dt);
     this.updateShots(dt); this.updateItems(dt); this.updateFx(dt);
 
     // stairs
